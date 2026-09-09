@@ -1,0 +1,24 @@
+# Sensor data (large, not tracked)
+proc_gyro/
+raw_acc/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# Models / outputs
+*.pkl
+*.joblib
+*.h5
+*.ckpt
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
