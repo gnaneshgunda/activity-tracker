@@ -1,6 +1,7 @@
 # Sensor data (large, not tracked)
 proc_gyro/
 raw_acc/
+ExtraSensory.per_uuid_features_labels/
 
 # Python
 __pycache__/
@@ -22,3 +23,4 @@ env/
 Thumbs.db
 .vscode/
 .idea/
+making.md
