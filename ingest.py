@@ -498,7 +498,17 @@ def _resolve_standing(
 
 
 def labels_path(labels_root: os.PathLike | str, uuid: str) -> Path:
-    return Path(labels_root) / f"{uuid}.features_labels.csv.gz"
+    """Locate a user's label file.
+
+    The released set is not uniformly compressed -- at least one user ships a
+    plain ``.csv`` -- so both suffixes are accepted, gzip first.
+    """
+    root = Path(labels_root)
+    gz = root / f"{uuid}.features_labels.csv.gz"
+    if gz.is_file():
+        return gz
+    plain = root / f"{uuid}.features_labels.csv"
+    return plain if plain.is_file() else gz
 
 
 def iter_label_rows(path: os.PathLike | str) -> Iterator[dict[str, str]]:

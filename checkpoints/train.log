@@ -1,0 +1,33 @@
+2026-09-10 08:33:53,364 users: 36 train / 12 val / 12 test
+2026-09-10 08:34:02,823 train: 36 users, 178743 labeled minutes -> 6740 sampled -> 108720 windows (9s)
+2026-09-10 08:34:02,823    train counts: {'lying down': 19509, 'sitting': 19292, 'standing in place': 18970, 'standing and moving': 0, 'walking': 18829, 'running': 11379, 'bicycling': 20741}
+2026-09-10 08:34:10,758 val: 12 users, 62348 labeled minutes -> 6006 sampled -> 102620 windows (8s)
+2026-09-10 08:34:10,758    val counts: {'lying down': 21101, 'sitting': 20387, 'standing in place': 19984, 'standing and moving': 0, 'walking': 20047, 'running': 3595, 'bicycling': 17506}
+2026-09-10 08:34:19,241 test: 12 users, 65489 labeled minutes -> 6131 sampled -> 89755 windows (8s)
+2026-09-10 08:34:19,241    test counts: {'lying down': 18142, 'sitting': 18627, 'standing in place': 18978, 'standing and moving': 0, 'walking': 18349, 'running': 1967, 'bicycling': 13692}
+2026-09-10 08:34:19,701 classes absent from training data, unpredictable: ('standing and moving',)
+2026-09-10 08:37:35,821 epoch 0 loss=1.3832 val_macro_f1=0.3744
+2026-09-10 08:39:24,985 epoch 1 loss=1.2359 val_macro_f1=0.3874
+2026-09-10 08:41:17,530 epoch 2 loss=1.1754 val_macro_f1=0.3801
+2026-09-10 08:43:08,574 epoch 3 loss=1.1209 val_macro_f1=0.3959
+2026-09-10 08:44:57,727 epoch 4 loss=1.0752 val_macro_f1=0.3920
+2026-09-10 08:46:47,076 epoch 5 loss=1.0309 val_macro_f1=0.3815
+2026-09-10 08:48:37,142 epoch 6 loss=0.9892 val_macro_f1=0.3856
+2026-09-10 08:50:27,350 epoch 7 loss=0.9200 val_macro_f1=0.3757
+2026-09-10 08:52:17,269 epoch 8 loss=0.8882 val_macro_f1=0.3896
+2026-09-10 08:54:07,739 epoch 9 loss=0.8599 val_macro_f1=0.3638
+2026-09-10 08:54:07,739 early stop at epoch 9
+
+=== TEST (held-out users) ===
+accuracy  : 0.3859
+macro F1  : 0.3319
+class                    prec    rec     f1  support
+lying down              0.373  0.604  0.462    18142
+sitting                 0.307  0.212  0.251    18627
+standing in place       0.317  0.224  0.262    18978
+standing and moving     0.000  0.000  0.000        0  (absent in train)
+walking                 0.436  0.412  0.423    18349
+running                 0.005  0.009  0.007     1967
+bicycling               0.597  0.577  0.587    13692
+
+saved checkpoints/lstm.pt and checkpoints/report.json

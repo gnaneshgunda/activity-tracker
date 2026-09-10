@@ -1,0 +1,34 @@
+2026-09-10 11:19:54,860 users: 36 train / 12 val / 12 test
+2026-09-10 11:20:10,675 train: 36 users, 178743 labeled minutes -> 8240 sampled -> 152751 windows (16s)
+2026-09-10 11:20:10,676    train counts: {'lying down': 27573, 'sitting': 27468, 'standing in place': 27117, 'standing and moving': 0, 'walking': 27417, 'running': 13480, 'bicycling': 29696}
+2026-09-10 11:20:10,685    train distinct users per class: {'lying down': 35, 'sitting': 36, 'standing in place': 36, 'walking': 36, 'running': 16, 'bicycling': 14}
+2026-09-10 11:20:24,157 val: 12 users, 62348 labeled minutes -> 7206 sampled -> 140449 windows (13s)
+2026-09-10 11:20:24,157    val counts: {'lying down': 29929, 'sitting': 29297, 'standing in place': 28939, 'standing and moving': 0, 'walking': 28477, 'running': 4229, 'bicycling': 19578}
+2026-09-10 11:20:24,164    val distinct users per class: {'lying down': 11, 'sitting': 12, 'standing in place': 12, 'walking': 12, 'running': 7, 'bicycling': 6}
+2026-09-10 11:20:37,989 test: 12 users, 65489 labeled minutes -> 7624 sampled -> 134693 windows (14s)
+2026-09-10 11:20:37,990    test counts: {'lying down': 27781, 'sitting': 28122, 'standing in place': 27316, 'standing and moving': 0, 'walking': 28378, 'running': 2240, 'bicycling': 20856}
+2026-09-10 11:20:37,999    test distinct users per class: {'lying down': 12, 'sitting': 12, 'standing in place': 12, 'walking': 12, 'running': 3, 'bicycling': 5}
+2026-09-10 11:20:38,864 classes absent from training data, unpredictable: ('standing and moving',)
+2026-09-10 11:24:13,814 epoch 0 loss=1.3566 val_macro_f1=0.4131
+2026-09-10 11:27:53,642 epoch 1 loss=1.2102 val_macro_f1=0.4189
+2026-09-10 11:31:44,801 epoch 2 loss=1.1566 val_macro_f1=0.4118
+2026-09-10 11:35:34,889 epoch 3 loss=1.1099 val_macro_f1=0.3648
+2026-09-10 11:39:20,556 epoch 4 loss=1.0723 val_macro_f1=0.3873
+2026-09-10 11:43:06,111 epoch 5 loss=1.0042 val_macro_f1=0.3734
+2026-09-10 11:46:46,053 epoch 6 loss=0.9683 val_macro_f1=0.3814
+2026-09-10 11:50:27,686 epoch 7 loss=0.9367 val_macro_f1=0.3669
+2026-09-10 11:50:27,687 early stop at epoch 7
+
+=== TEST (held-out users) ===
+accuracy  : 0.4213
+macro F1  : 0.3484
+class                    prec    rec     f1  support
+lying down              0.393  0.743  0.515    27781
+sitting                 0.299  0.200  0.240    28122
+standing in place       0.351  0.178  0.236    27316
+standing and moving     0.000  0.000  0.000        0  (absent in train)
+walking                 0.549  0.454  0.497    28378
+running                 0.002  0.005  0.003     2240
+bicycling               0.590  0.609  0.600    20856
+
+saved checkpoints/lstm_v2.pt and checkpoints/report_v2.json

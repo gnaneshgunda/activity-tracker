@@ -224,6 +224,22 @@ class PreprocessedSignal:
         return self.gyro_raw is not None
 
     @property
+    def gyro_coverage_fraction(self) -> float:
+        """Fraction of the accelerometer grid the gyroscope actually covers.
+
+        The two sensors run on independent clocks: both files hold 800 samples,
+        but their spans differ per device -- measured across this release the
+        gyroscope runs anywhere from 8s shorter to 12s longer than the
+        accelerometer. The gyro is interpolated onto the accelerometer's grid by
+        timestamp (never by sample index, which would misalign by seconds), and
+        grid points outside the gyro's own span are left NaN rather than
+        extrapolated. This reports how much survived.
+        """
+        if self.gyro_raw is None or self.n_samples == 0:
+            return 0.0
+        return float(np.all(np.isfinite(self.gyro_raw), axis=1).mean())
+
+    @property
     def gravity_magnitude(self) -> np.ndarray:
         """``(n,)`` magnitude of the gravity estimate; ~1.0 g when settled."""
         return np.linalg.norm(self.gravity, axis=1)

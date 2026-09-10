@@ -1,0 +1,23 @@
+2026-09-10 12:09:01,908 users: 36 train / 12 val / 12 test
+2026-09-10 12:09:01,909 dropping classes: ['running']
+2026-09-10 12:09:15,115 train: 10740 bursts -> 9855 sequences of shape (400, 11) (13s)
+2026-09-10 12:09:15,115    counts: {'lying down': 1956, 'sitting': 1961, 'standing in place': 1956, 'walking': 1982, 'bicycling': 2000}
+2026-09-10 12:09:15,115    users/class: {'lying down': 35, 'sitting': 36, 'standing in place': 36, 'walking': 36, 'bicycling': 14}
+2026-09-10 12:09:24,724 val: 9206 bursts -> 8985 sequences of shape (400, 11) (10s)
+2026-09-10 12:09:24,724    counts: {'lying down': 2000, 'sitting': 2000, 'standing in place': 2000, 'walking': 1998, 'bicycling': 987}
+2026-09-10 12:09:24,724    users/class: {'lying down': 11, 'sitting': 12, 'standing in place': 12, 'walking': 12, 'bicycling': 6}
+2026-09-10 12:09:34,667 test: 9624 bursts -> 9492 sequences of shape (400, 11) (10s)
+2026-09-10 12:09:34,667    counts: {'lying down': 2000, 'sitting': 1999, 'standing in place': 2000, 'walking': 2000, 'bicycling': 1493}
+2026-09-10 12:09:34,668    users/class: {'lying down': 12, 'sitting': 12, 'standing in place': 12, 'walking': 12, 'bicycling': 5}
+2026-09-10 12:09:35,130 classes absent from training data, unpredictable: ('standing and moving', 'running')
+2026-09-10 12:13:35,067 epoch 0 loss=1.4198 val_macro_f1=0.3944
+2026-09-10 12:16:42,892 epoch 1 loss=1.2911 val_macro_f1=0.4049
+2026-09-10 12:19:37,517 epoch 2 loss=1.2377 val_macro_f1=0.4055
+2026-09-10 12:22:26,966 epoch 3 loss=1.2135 val_macro_f1=0.4490
+2026-09-10 12:25:15,240 epoch 4 loss=1.1884 val_macro_f1=0.4286
+2026-09-10 12:28:19,438 epoch 5 loss=1.1771 val_macro_f1=0.4353
+2026-09-10 12:31:39,745 epoch 6 loss=1.1434 val_macro_f1=0.4281
+2026-09-10 13:09:35,391 epoch 7 loss=1.1123 val_macro_f1=0.4609
+2026-09-10 13:11:44,570 epoch 8 loss=1.0989 val_macro_f1=0.4494
+2026-09-10 13:13:52,644 epoch 9 loss=1.0789 val_macro_f1=0.4578
+2026-09-10 13:16:01,301 epoch 10 loss=1.0664 val_macro_f1=0.4801

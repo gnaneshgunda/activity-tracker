@@ -303,3 +303,32 @@ def test_summarize(dataset: Path) -> None:
     assert s["n_with_burst"] == 2
     assert s["n_without_burst"] == 3
     assert s["per_flag"][Flag.MISSING_BURST] == 3
+
+
+def test_uncompressed_label_file_is_found(tmp_path: Path) -> None:
+    """The release is not uniformly gzipped; a plain .csv must still load."""
+    from ingest import labels_path
+
+    labels = tmp_path / "labels"
+    labels.mkdir()
+    path = labels / f"{SYNTHETIC_UUID}.features_labels.csv"
+    header = ["timestamp"] + LABEL_COLS
+    with path.open("w", newline="") as fh:
+        fh.write(",".join(header) + "\n")
+        fh.write(",".join([str(MATCHED_TS)] + ["1" if c == "label:SITTING" else "0"
+                                               for c in LABEL_COLS]) + "\n")
+
+    assert labels_path(labels, SYNTHETIC_UUID) == path
+    examples = ingest_user(SYNTHETIC_UUID, tmp_path / "raw", labels)
+    assert [e.label for e in examples] == ["sitting"]
+
+
+def test_gzip_preferred_when_both_exist(tmp_path: Path) -> None:
+    from ingest import labels_path
+
+    labels = tmp_path / "labels"
+    labels.mkdir()
+    (labels / f"{SYNTHETIC_UUID}.features_labels.csv").write_text("timestamp\n")
+    gz = labels / f"{SYNTHETIC_UUID}.features_labels.csv.gz"
+    gz.write_bytes(b"")
+    assert labels_path(labels, SYNTHETIC_UUID) == gz
