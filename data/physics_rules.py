@@ -38,6 +38,7 @@ from typing import Iterable, Mapping, Optional, Sequence
 import numpy as np
 
 from data.ingest import TARGET_CLASSES, PhonePlacement
+from models.loco_classifier import LocoClassifier, LOCO_FEATURES
 
 __all__ = [
     "Features",
@@ -178,26 +179,37 @@ def periodicity_from_vertical(
     return float(np.max(ac[lo:hi])) if hi > lo else 0.0
 
 
-def label_activity(f: Features, th: Optional[Thresholds] = None) -> str:
-    """Hard label. Structure is hand-written physics; constants are fitted."""
+def label_activity(
+    f: Features,
+    th: Optional[Thresholds] = None,
+    loco_clf: Optional[LocoClassifier] = None,
+) -> str:
+    """Hard label. Structure is hand-written physics; constants are fitted.
+
+    When ``loco_clf`` is provided it is used to split walking vs bicycling
+    instead of the rotation_ratio threshold, which is unreliable when gyro
+    is absent or the phone is in a pocket.
+    """
     th = th or Thresholds()
 
     still = f.sma < th.static_sma and (not f.has_gyro or f.gyro_rms < th.static_gyro)
     if still:
         return _posture(f, th)
 
-    # Use FFT dominant frequency as a more robust periodicity gate when available.
     is_periodic = (
         f.periodicity > th.periodic
         or f.cadence_bpm > 0
         or f.dominant_freq_hz >= th.freq_periodic_lo
     )
     if is_periodic:
-        if f.has_gyro and f.rotation_ratio > th.bike_rotation_ratio:
-            return "bicycling"
-        # Jerk distinguishes running foot-strikes from walking even when SMA overlaps.
+        # Running: clear signal from jerk + SMA — physics is reliable here
         if f.sma > th.run_sma or f.cadence_bpm >= th.run_cadence or f.jerk_mean > th.run_jerk:
             return "running"
+        # Walking vs bicycling: use loco classifier if available, else rotation_ratio
+        if loco_clf is not None:
+            return loco_clf.predict(_features_to_loco_dict(f))
+        if f.has_gyro and f.rotation_ratio > th.bike_rotation_ratio:
+            return "bicycling"
         if f.cadence_bpm >= th.walk_cadence_lo or f.dominant_freq_hz >= th.freq_periodic_lo:
             return "walking"
 
@@ -219,10 +231,23 @@ def _posture(f: Features, th: Thresholds) -> str:
     return "standing in place" if f.tilt_deg > th.stand_tilt else "sitting"
 
 
+def _features_to_loco_dict(f: Features) -> dict:
+    """Convert a Features instance to the dict expected by LocoClassifier."""
+    gyro_rms = f.gyro_rms
+    return {
+        "periodicity": f.periodicity,
+        "zcr": 0.0,          # not in Features; LocoClassifier handles missing as 0
+        "rot_ratio": f.rotation_ratio,
+        "dom_hz": f.dominant_freq_hz,
+        "jerk_std": f.jerk_mean,  # jerk_mean is the closest proxy in Features
+    }
+
+
 def predict_proba(
     f: Features,
     th: Optional[Thresholds] = None,
     *,
+    loco_clf: Optional[LocoClassifier] = None,
     temperature: float = 1.0,
     classes: Sequence[str] = TARGET_CLASSES,
 ) -> np.ndarray:
@@ -234,7 +259,7 @@ def predict_proba(
     """
     th = th or Thresholds()
     classes = tuple(classes)
-    hard = label_activity(f, th)
+    hard = label_activity(f, th, loco_clf)
     scores = np.zeros(len(classes), dtype=np.float64)
 
     def margin(x: float, t: float, scale: float) -> float:
