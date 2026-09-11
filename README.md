@@ -1,581 +1,340 @@
-# Activity Tracker — Architecture & Pipeline
+# Activity Tracker
 
-A wearable activity recognition system built on the ExtraSensory dataset. It
-classifies 7 human activities from raw accelerometer + gyroscope bursts,
-explains its reasoning in natural language, detects anomalous events (falls,
-prolonged immobility), estimates energy expenditure, and answers free-text
-questions about a user's day.
+Activity Tracker is an end-to-end pipeline for human activity recognition from inertial sensor data. It ingests accelerometer and gyroscope readings, preprocesses them, extracts motion features, scores them with a learned model and physics rules, segments activity windows, stores results in SQLite, and exposes them through a Streamlit interface for timeline review, trends, and natural-language question answering.
+
+This repository is designed to be practical and self-contained: you can install it, run it on your own sensor files, train or evaluate models, and inspect outputs without needing to read multiple internal docs.
 
 ---
 
-## Table of Contents
+## What this project does
 
-1. [Where We Started](#where-we-started)
-2. [What Changed — Evolution Log](#what-changed--evolution-log)
-3. [Where We Ended](#where-we-ended)
-4. [Full Pipeline Architecture](#full-pipeline-architecture)
-5. [Module Reference](#module-reference)
-6. [Data Contracts](#data-contracts)
-7. [Training](#training)
-8. [Running the App](#running-the-app)
-9. [Key Design Decisions & Known Limitations](#key-design-decisions--known-limitations)
+- Reads raw motion data from CSV or ExtraSensory-style data files
+- Detects activity windows from motion signals
+- Fuses a neural model with rule-based physics logic
+- Stores event timelines and rollups in SQLite
+- Estimates basic energy use from activity durations
+- Provides a local question-answer interface using a lightweight SLM
+- Includes a Streamlit dashboard for exploring results
 
 ---
 
-## Where We Started
+## Repository highlights
 
-The project began as a basic LSTM window classifier over the ExtraSensory
-dataset with:
-
-- **5 physics features**: SMA, tilt, gyro_rms (scalar), cadence_bpm, periodicity
-- **Hand-written decision tree** with manually set thresholds (not fitted)
-- **10 input channels**: body_acc (3) + gravity (3) + gyro (3) + gyro_present (1)
-- **Simple router stub**: `SLMNotConfigured` raised on any ambiguous question
-- **No temporal smoothing**: raw per-window argmax, no HMM
-- **No anomaly detection**
-- **No energy estimation**
-- **No RAG / exemplar bank**
-- **No SLM integration** — the slot existed in code but was never filled
-- **Training OOM**: `ProcessPoolExecutor` defaulted to 16 workers × ~400 MB
-  each = 12 GB on a machine with only 3.2 GB free RAM
-
-The original checkpoint (`lstm.pt`) was trained with N_CHANNELS=10.
+- `run_pipeline.py`: end-to-end pipeline runner for sensor data
+- `app.py`: Streamlit dashboard with Timeline, Ask, and Trends tabs
+- `analysis/`: storage, rollups, router, formatter, anomaly logic, and energy estimation
+- `data/`: preprocessing, sensor parsing, feature extraction, and physics rules
+- `models/`: LSTM, hybrid model, locomotion classifier, and local SLM wrapper
+- `training/`: model training scripts and evaluation entry points
+- `checkpoints/`: saved model checkpoints and reports
 
 ---
 
-## What Changed — Evolution Log
+## Quick start
 
-### Phase 1 — Physics Model Overhaul
-
-**Problem**: The 5-feature physics rule had hand-set constants that silently
-misfired on this dataset. `sma < 0.25` captured walking and bicycling as
-"static". `periodicity > 0.40` excluded both from the locomotion branch.
-
-**Changes**:
-- Added `Thresholds.fit()` — coordinate ascent over a grid, maximising
-  macro-F1 on labelled training data. Structure stays hand-written; only
-  constants are fitted.
-- Added 6 new features to `Features` dataclass:
-  - `jerk_mean` (g/s) — mean magnitude of frame-to-frame body_acc derivative.
-    Distinguishes running foot-strikes from walking even when SMA overlaps.
-  - `dominant_freq_hz` (Hz) — FFT peak on vertical body_acc in 0.5–5 Hz band.
-    More robust than autocorrelation cadence for noisy signals.
-  - `gyro_x_rms`, `gyro_y_rms`, `gyro_z_rms` (rad/s) — axis-resolved gyro RMS.
-    Walking has dominant pitch (y-axis); lateral stumbles show on x-axis;
-    cycling has dominant yaw (z-axis).
-- Updated `label_activity()`: FFT freq as third periodicity gate; jerk as
-  third running gate.
-- Updated `predict_proba()`: jerk and FFT margins added to running/walking
-  soft scores.
-- Added `tilt_reliable` property: returns False when phone is in bag or on
-  table, triggering an honest "sitting" fallback instead of a wrong posture.
-
-**Files**: `data/physics_rules.py`
-
----
-
-### Phase 2 — Feature Pipeline Expansion (N_CHANNELS 10 → 26)
-
-**Problem**: LSTM only saw raw sensor channels. Physics features were computed
-separately and never fed back into the neural network.
-
-**Changes**:
-- `pipeline/recognize.py`: Added `dominant_freq_hz()` (FFT on vertical
-  body_acc, returns peak in 0.5–5 Hz band) and `acc_gyro_phase()` (cosine of
-  phase difference between vertical acc and gyro-y). Both exported in `__all__`.
-- `data/dataset.py`: CHANNELS expanded from 10 to 26:
-  - Raw sensor (10): body_acc_x/y/z, gravity_x/y/z, gyro_x/y/z, gyro_present
-  - Derived physics (12): tilt_deg, sma, cadence_hz, periodicity, vertical_std,
-    rotation_ratio, jerk_mean, gyro_x/y/z_rms, dominant_freq_hz, acc_gyro_phase
-  - Phone placement flags (4): phone_pocket, phone_hand, phone_bag, phone_table
-- `_minute_windows()` now computes all 12 derived features per window and
-  broadcasts them as constants across the T=50 timesteps.
-- `models/lstm.py`: `_physics_probs_from_window` updated to pass all new
-  `Features` fields (jerk_mean, dominant_freq_hz, gyro_x/y/z_rms) — was
-  missing these, would have crashed mid-training.
-
-**Note**: Any checkpoint trained with fewer than 26 channels is incompatible.
-`lstm_alpha_v3.pt` is the target output of the current training pipeline.
-
----
-
-### Phase 3 — Alpha-Aware LSTM (Physics-Neural Fusion)
-
-**Problem**: A pure LSTM ignores the physics prior entirely. A pure physics
-rule ignores temporal patterns. Neither alone is robust.
-
-**Changes**:
-- Added `AlphaAwareLSTMClassifier` in `models/lstm.py`: shared BiLSTM encoder
-  with two heads — a label head (7-class logits) and an alpha head (scalar
-  gate in [0,1]).
-- The alpha gate is supervised from the gap between the ground-truth
-  log-likelihoods of the ML head and the physics prior. When the LSTM is
-  more confident than physics, alpha → 1 (trust LSTM). When physics is more
-  confident, alpha → 0 (trust physics).
-- `train_joint_alpha()`: trains both heads jointly. Loss = CrossEntropy +
-  `alpha_loss_weight × MSE(alpha_pred, alpha_target)`.
-- `train_alpha.py`: CLI for training the alpha-aware model with configurable
-  hidden size, layers, lr, batch size, workers, cap, seed.
-
----
-
-### Phase 4 — RAG + SLM Integration (B8 + B9)
-
-**Problem**: The router raised `SLMNotConfigured` on any ambiguous question.
-The exemplar bank existed but had no way to call a language model.
-
-**Changes**:
-
-**`models/slm.py`** (new file):
-- `SLMConfig`: model_path, n_ctx, n_threads, max_tokens, temperature
-- `SLM`: lazy-loads `llama_cpp.Llama` (Phi-3 Mini 3.8B Q4_K_M, ~2.3 GB).
-  `__call__` runs inference. `for_routing()` returns greedy max_tokens=10
-  variant. `for_narration()` returns temperature=0.3 max_tokens=200 variant.
-  Both share the same loaded model instance (no double-load).
-- `get_slm()`: module-level singleton, lazy.
-- `download_model()`: downloads from HF Hub. CLI: `python3 -m models.slm --download`
-
-**`analysis/router.py`**:
-- Replaced `_default_config = RouterConfig()` with `_make_default_config()`
-  which tries to wire `get_slm().for_routing()`, falls back to rule-only if
-  weights are missing. Rule-only mode still works perfectly without the model.
-
-**`analysis/exemplars.py`**:
-- Added `explain_auto(query_signature, *, k, metric, anomaly_event)` — one-call
-  entry point that retrieves exemplars + calls `get_slm().for_narration()`,
-  falls back to `_null_slm` if weights are missing.
-
----
-
-### Phase 5 — OOM Fix + Training Stability
-
-**Problem**: Training crashed with kernel OOM killer before epoch 1.
-Root cause: `ProcessPoolExecutor` defaulting to 16 workers × ~400 MB each
-= 12 GB on a machine with 3.2 GB free RAM and 0 swap.
-
-**Changes**:
-- `training/train_common.py`: Added `_DATA_WORKERS = int(os.environ.get("ACTIVITY_TRACKER_WORKERS", "2"))`.
-  `build_split_sets` passes `workers=_DATA_WORKERS` to `scan_all` and
-  `build_windows`. Added progress prints per split.
-- `training/train_alpha.py`: Added `--workers 2` arg. Sets
-  `ACTIVITY_TRACKER_WORKERS` env var before forking. Default `--cap` lowered
-  to 500, `--batch-size` to 128.
-- `requirements.txt`: Added `llama-cpp-python>=0.2.57`, `huggingface-hub>=0.23`,
-  `scikit-learn>=1.3`, version bounds on all deps, CPU/GPU install notes.
-
----
-
-## Where We Ended
-
-The system now has:
-
-| Component | Status |
-|---|---|
-| Physics rules (5 features, hand-set) | ✅ Replaced with 11-feature fitted rules |
-| LSTM (10 channels) | ✅ Upgraded to 26-channel alpha-aware BiLSTM |
-| Physics-neural fusion | ✅ Per-sample alpha gate, jointly trained |
-| Anomaly detection | ✅ Physics rule (jerk + tilt) + IsolationForest fallback |
-| Energy estimation | ✅ MET-lookup, Compendium of Physical Activities |
-| RAG exemplar bank | ✅ 28 entries × 9 features, cosine/Euclidean retrieval |
-| SLM (Phi-3 Mini) | ✅ Lazy-loaded, shared instance, routing + narration variants |
-| Query router | ✅ Rule-first → SLM fallback, 8 route types |
-| Storage | ✅ SQLite with coverage tracking and anomaly event table |
-| Streamlit UI | ✅ Timeline + Ask + Trends tabs |
-| Training stability | ✅ Workers capped at 2, OOM eliminated |
-
-**Target checkpoint**: `checkpoints/lstm_alpha_v3.pt` (N_CHANNELS=26,
-`AlphaAwareLSTMClassifier`)
-
-**Known gaps**:
-- `standing and moving` is structurally absent from ExtraSensory training data
-  (no column distinguishes it from `standing in place`). The model cannot
-  reliably predict it.
-- Jerk/FFT/phase features are broadcast as constants per window (same value
-  repeated T=50 times). The LSTM sees them as static hints, not temporal
-  signals — acknowledged limitation.
-- HMM post-processing (B3) is designed but not yet trained. The Viterbi
-  smoother would add +0.05–0.08 macro-F1 by eliminating single-window blips.
-
----
-
-## Full Pipeline Architecture
-
-```
-ExtraSensory per-user files (features_labels.csv.gz + raw sensor bursts)
-        │
-        ▼
-[B0] Ingestion & Alignment                      data/ingest.py
-        │  join uuid+timestamp → IngestedExample
-        │  burst=None + coverage_s=0 when no raw burst exists
-        ▼
-[B1] Preprocessing                              data/preprocess.py
-        │  resample to 25 Hz, Butterworth low-pass
-        │  gravity/body-acceleration split (0.3 Hz cutoff)
-        │  → PreprocessedSignal {body_acc, gravity, gyro_raw, gaps}
-        ▼
-[B2] Window Feature Extraction                  pipeline/recognize.py
-        │  extract_windows(): 2 s windows, 50% overlap
-        │  per window → cadence_hz, sma, gyro_rms (axis-resolved),
-        │               dominant_freq_hz (FFT), acc_gyro_phase,
-        │               vertical_std, valid_fraction
-        │  → list[Window]  (probs=None at this point)
-        ▼
-[B2] Label Prediction (scorer plug-in)          models/lstm.py  OR  data/physics_rules.py
-        │
-        │  attach_probs(windows, scorer)
-        │
-        │  scorer A — AlphaAwareLSTMClassifier          models/lstm.py
-        │    lstm.make_scorer(model, normaliser, signals)
-        │    26-channel BiLSTM → logits → softmax
-        │    alpha head gates LSTM vs. physics per sample
-        │
-        │  scorer B — physics rule fallback             data/physics_rules.py
-        │    physics_rules.make_scorer(thresholds, features_for)
-        │    predict_proba(Features(...)) → soft distribution
-        │    used when no checkpoint is loaded
-        │
-        │  → Window.probs  (7-class softmax, full distribution)
-        │    Window.confidence = 1 − normalised_entropy(probs)
-        ▼
-[B3] Segmentation (HMM / Viterbi)               pipeline/segment.py
-        │  segment_windows(windows, transition_model)
-        │  emission probs  ← Window.probs (log-space)
-        │  transition matrix ← estimate_transitions() from training sequences
-        │                      falls back to physics-plausible prior per state
-        │  viterbi_k_min(): k-minimum-consecutive-states constraint
-        │    (prevents single-window blips; k ≈ 5 s / hop_s)
-        │  cusum_refine(): snap each decoded boundary ±3 s on |body_acc|
-        │  → list[Segment] {label, t_start, t_end, confidence,
-        │                    mean_probs, coverage_s, flags}
-        ▼
-[B4] Signature Extraction                       analysis/signature.py
-        │  extract_signature(segment, signal)  — label-free
-        │  → Signature {tilt_deg_mean/std, sma, cadence_bpm,
-        │               gyro_rms_x/y/z, jerk_energy,
-        │               orientation_stability, periodicity}
-        │
-        ├─────────────────────────────────┐
-        ▼                                  ▼
-[B4.5] Anomaly / Event Detector           [B5] Storage Layer
-  analysis/anomaly.py                       analysis/store.py
-  jerk_energy spike + tilt collapse         SQLite: timeline + anomaly_events
-  → AnomalyEvent  method=physics_rule       coverage_s + uuid/t_label_start_ref
-  IsolationForest fallback (optional)       get_coverage() for timestamp checks
-        │                                        │
-        └──────────────┬─────────────────────────┘
-                        ▼
-             [B6] Daily Rollup                  analysis/rollup.py
-               60 s per labeled minute (not ~20 s burst length)
-               bout count, avg bout length, first/last onset
-                        │
-                        ├──────────────────► [B_E] Energy / MET Estimator
-                        │                     analysis/energy.py
-                        │                     MET × weight × duration → kcal
-                        ▼
-             [B7] Rolling Trends                analysis/rollup.py
-               7d / monthly / yearly windows
-               n_days_with_data always reported
-                        │
-                        ▼
-             [B8] Query Router                  analysis/router.py
-               Stage 1: regex rule table → (route, confidence)
-               Stage 2: SLM fallback (Phi-3 Mini) when conf < 0.75
-               logs which path was used on every call
-                        │
-        ┌───────────────┼──────────────┬──────────────┬──────────────┐
-        ▼               ▼              ▼              ▼              ▼
-   TASK1             TASK2          TASK3          TASK4         B_ENERGY
-   label/prob        aggregation    onset/offset   RAG + SLM     B_ANOMALY
-   look-up           sum/count/cmp  coverage-      narration     MET / event
-                     60s-per-min    checked                       table
-                        │
-                        ▼
-             [B9] Exemplar Bank & SLM Narration  analysis/exemplars.py
-               nearest_exemplars(): cosine/Euclidean on 9-feature vectors
-               28 exemplars × 7 classes + anomaly_event class
-               build_explain_prompt(): query numbers vs. exemplar numbers
-               explain() / explain_auto(): SLM must cite specific values
-               anomaly events route through the same path (B4.5 → B9)
-                        │
-                        ▼
-             [B10] Output Formatter              formatter.py
-               get_coverage() before rendering any timestamp
-               widens or refuses citations with 0% real signal coverage
-                        │
-                        ▼
-             [B11] Streamlit UI                  app.py
-               Timeline: coverage fraction per segment
-               Ask: confidence/entropy shown when low
-               Trends: kcal toggle (labeled as population-level estimate)
-```
-
-### Route Taxonomy (B8)
-
-| Route | Trigger | Backend |
-|---|---|---|
-| `TASK1` | "What was she doing at 3pm?" | Label/probability look-up |
-| `TASK2` | "How long did she walk today?" | Aggregation (60s-per-minute) |
-| `TASK3` | "When did she start running?" | Onset/interval, coverage-checked |
-| `TASK4` | "Why does her cadence drop?" | RAG + SLM narration (B9) |
-| `B_ENERGY` | "How many calories did she burn?" | MET estimator (B_E) |
-| `B_ANOMALY` | "Did she fall?" / "Any unsteady episodes?" | Anomaly event table (B4.5) |
-| `PERSONALIZATION` | "Update her weight to 58 kg" | Profile store |
-| `UNKNOWN` | No confident match | Clarification prompt |
-
----
-
-## Module Reference
-
-```
-activity-tracker/
-├── data/
-│   ├── ingest.py           B0 — UUID scan, burst join, TARGET_CLASSES, PhonePlacement
-│   ├── preprocess.py       B1 — resample, Butterworth, gravity/body split
-│   ├── physics_rules.py    Physics decision tree with fitted thresholds
-│   │                         Features (11 fields), Thresholds.fit(), predict_proba()
-│   ├── dataset.py          Window assembly — CHANNELS (26), WindowSet, Normaliser
-│   │                         scan_all, build_windows, build_burst_sequences
-│   └── fusion.py           Alpha-weighted fusion of LSTM + physics probs
-│
-├── pipeline/
-│   ├── recognize.py        B2 — extract_windows, cadence_from_vertical,
-│   │                         dominant_freq_hz, acc_gyro_phase, attach_probs
-│   └── segment.py          B3 — HMM/Viterbi, k-min-duration, CUSUM snapping
-│
-├── models/
-│   ├── lstm.py             LSTMClassifier, AlphaAwareLSTMClassifier
-│   │                         train(), train_joint_alpha(), evaluate()
-│   │                         _physics_probs_from_window() (physics prior per batch)
-│   │                         save_checkpoint(), load_checkpoint()
-│   ├── hybrid.py           Hybrid inference: alpha × LSTM + (1-alpha) × physics
-│   └── slm.py              SLM wrapper (Phi-3 Mini 3.8B Q4_K_M via llama-cpp-python)
-│                             get_slm() singleton, for_routing(), for_narration()
-│                             download_model() from HF Hub
-│
-├── analysis/
-│   ├── signature.py        B4 — Signature dataclass, extract_signature() (label-free)
-│   ├── anomaly.py          B4.5 — AnomalyEvent, physics rule + IsolationForest fallback
-│   ├── store.py            B5 — SQLite store, timeline + anomaly_events tables
-│   │                         get_coverage() for timestamp validation
-│   ├── rollup.py           B6/B7 — daily rollup, rolling trends, n_days_with_data
-│   ├── energy.py           B_E — MET lookup, kcal estimate, Compendium of Physical Activities
-│   ├── router.py           B8 — rule-first → SLM fallback, RouteResult, build_router()
-│   └── exemplars.py        B9 — EXEMPLAR_BANK (28 entries), nearest_exemplars(),
-│                             explain(), explain_auto(), build_explain_prompt()
-│
-├── training/
-│   ├── train_common.py     build_split_sets(), _DATA_WORKERS (env-capped at 2)
-│   ├── train_alpha.py      CLI for AlphaAwareLSTMClassifier training
-│   ├── train_lstm.py       CLI for plain LSTMClassifier training
-│   ├── train_burst.py      CLI for per-burst sequence training
-│   └── train_hybrid.py     CLI for hybrid model training
-│
-├── formatter.py            B10 — coverage-aware output rendering
-├── app.py                  B11 — Streamlit UI (Timeline / Ask / Trends tabs)
-└── checkpoints/            Saved .pt files + JSON training reports
-```
-
----
-
-## Data Contracts
-
-### Key structs (abbreviated)
-
-```python
-# B0 — one row per matched (uuid, labeled-minute)
-IngestedExample = {
-    "uuid": str,
-    "t_label_start": float,       # unix seconds
-    "burst": {"t", "acc", "gyro"} | None,
-    "label": str | None,          # 7-class, or None if ambiguous
-    "coverage_s": float,          # seconds of real burst in this 60s slot
-}
-
-# B1 — resampled to 25 Hz
-PreprocessedSignal = {
-    "t", "acc", "acc_raw", "gyro", "gyro_raw",
-    "gravity",    # low-pass estimate of gravity direction, |g|=1
-    "body_acc",   # acc_raw − gravity
-    "gaps",       # interpolated/missing spans within the burst
-}
-
-# B2 — one row per 2s window
-Window = {
-    "t_start", "t_end",
-    "probs": dict[str, float],    # 7-class softmax
-    "entropy": float,             # confidence proxy
-    "cadence_hz": float | None,
-    "sma": float,
-    "gyro_rms_xyz": tuple[float, float, float],
-}
-
-# B4 — attached to each Segment
-Signature = {
-    "tilt_deg_mean", "tilt_deg_std",
-    "sma", "cadence_bpm",
-    "gyro_rms_x", "gyro_rms_y", "gyro_rms_z",
-    "jerk_energy", "orientation_stability", "periodicity",
-}
-
-# B4.5 — zero or more per segment
-AnomalyEvent = {
-    "event_id", "t_start", "t_end",
-    "kind": str,                  # "possible_fall" | "prolonged_immobility"
-    "trigger_signature": dict,    # actual jerk_energy / orientation_stability values
-    "method": str,                # "physics_rule" | "isolation_forest"
-    "coverage_s": float,
-}
-
-# B_E — energy estimate
-EnergyEstimate = {
-    "activity", "duration_s",
-    "met": float,
-    "assumed_weight_kg": float,   # explicit assumption, not measured
-    "kcal_est": float,
-    "basis": str,                 # Compendium category used
-}
-```
-
-### 7 Activity Classes
-
-```
-lying down | sitting | standing in place | standing and moving
-walking | running | bicycling
-```
-
-### N_CHANNELS = 26
-
-```
-Raw (10):    body_acc_x/y/z, gravity_x/y/z, gyro_x/y/z, gyro_present
-Physics (12): tilt_deg, sma, cadence_hz, periodicity, vertical_std,
-              rotation_ratio, jerk_mean, gyro_x/y/z_rms,
-              dominant_freq_hz, acc_gyro_phase
-Placement (4): phone_pocket, phone_hand, phone_bag, phone_table
-```
-
----
-
-## Training
-
-### Prerequisites
+### 1) Install dependencies
 
 ```bash
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-# For CPU-only llama-cpp-python:
-CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install llama-cpp-python
 ```
 
-### Download SLM weights (optional, ~2.3 GB)
+If you are using a different environment manager, install the packages from `requirements.txt` in your active Python environment.
+
+### 2) Run the pipeline on your data
+
+You can process either separate accelerometer and gyroscope files or one combined CSV file.
+
+#### Example: separate files
 
 ```bash
-python3 -m models.slm --download
+python run_pipeline.py --acc acc.csv --gyro gyro.csv --db pipeline.db
 ```
 
-### Train the alpha-aware model
+#### Example: combined CSV
 
 ```bash
-# From the project root
-python3 -m training.train_alpha \
-  --cap 300 --epochs 30 \
-  --hidden 96 --layers 2 \
-  --lr 1e-3 --batch-size 64 \
-  --workers 2 --seed 42 \
-  --out checkpoints/lstm_alpha_v3.pt \
-  --report checkpoints/lstm_alpha_v3_report.json
+python run_pipeline.py --combined sensor_data.csv --db pipeline.db
 ```
 
-**Worker cap**: Keep `--workers 2` on machines with < 8 GB free RAM.
-Each worker loads ~400 MB of burst data. 16 workers × 400 MB = 12 GB → OOM.
+The pipeline will read the sensor data, preprocess it, score activity windows, and save results to SQLite.
 
-**Cap**: `--cap 300` means at most 300 labeled minutes per class per split.
-Raise to 500–1000 if you have more RAM.
-
-### Checkpoint compatibility
-
-Checkpoints store `N_CHANNELS` implicitly via `len(mean)`. A checkpoint
-trained with 10 channels cannot be loaded into a 26-channel model. Always
-use `load_checkpoint()` which reads `model_type` and reconstructs the
-correct architecture.
-
----
-
-## Running the App
+### 3) Start the dashboard
 
 ```bash
 streamlit run app.py
 ```
 
-Three tabs:
-- **Timeline**: activity segments with coverage indicator (fraction backed by
-  real signal, not just labeled minutes)
-- **Ask**: free-text questions routed through B8 → B9. Confidence/entropy
-  shown when low.
-- **Trends**: rolling 7d/monthly/yearly duration charts + kcal toggle
-  (labeled as population-level estimate)
+Then connect to the database in the sidebar and use the UI to explore the timeline and ask questions.
 
 ---
 
-## Key Design Decisions & Known Limitations
+## Supported input formats
 
-### Why fitted thresholds, not hand-set?
+### CSV input
 
-The rule structure encodes physics ("locomotion is periodic", "posture shows
-in tilt"). The constants encode the units and dynamic range of one particular
-sensor pipeline. Hand-set constants from another setup silently route every
-sample down the wrong branch. `Thresholds.fit()` derives every constant from
-labelled training data by maximising macro-F1.
+The project accepts standard tabular motion data.
 
-### Why subject-wise splits?
+#### Separate accelerometer and gyroscope CSVs
 
-Windows from one burst overlap 50% and windows from one user share a device,
-gait, and carrying position. Splitting at the window level puts near-duplicates
-on both sides and inflates every metric. `split_users()` partitions UUIDs.
+- Accelerometer columns may contain names like `timestamp, x, y, z` or `timestamp, acc_x, acc_y, acc_z`
+- Gyroscope columns may contain `timestamp, x, y, z` or `timestamp, gyro_x, gyro_y, gyro_z`
 
-### Why 60 s per labeled minute in rollup?
+#### Combined CSV
 
-The ExtraSensory burst is ~20 s of sensor data carrying a 60 s label. The
-burst is evidence for the label, not the duration itself. Counting burst
-length would undercount all activity durations by ~3×.
+A single file may contain all six channels:
 
-### Why alpha per sample, not a global scalar?
+```csv
+timestamp,acc_x,acc_y,acc_z,gyro_x,gyro_y,gyro_z
+1690000000.0,0.05,-0.02,0.98,0.00,0.10,-0.02
+1690000001.0,0.07,-0.01,0.97,0.01,0.12,-0.03
+```
 
-A global alpha assumes the LSTM is uniformly better or worse than physics
-across all inputs. In practice the LSTM is better on common classes (sitting,
-walking) and physics is better on rare or ambiguous ones (running vs. fast
-walking, bicycling). A per-sample gate lets the model learn which expert to
-trust for each window.
+Timestamps may be Unix seconds or ISO-8601 strings.
 
-### Why Phi-3 Mini for the SLM?
+### ExtraSensory-style raw files
 
-- 3.8B params, ~2.3 GB in Q4_K_M quantisation
-- Runs on CPU via llama-cpp-python; no GPU required
-- Instruction-tuned: follows structured prompts without fine-tuning
-- Fits on a Raspberry Pi 5 (8 GB) or Jetson Orin Nano for edge deployment
-- MIT licence
+This repo also supports the space-separated, headerless format used in the ExtraSensory dataset:
 
-### Known limitations
+```text
+162888.18 0.00302 0.00699 -0.99563
+162888.25 0.00307 0.00084 -0.99527
+```
 
-| Limitation | Impact | Mitigation |
-|---|---|---|
-| `standing and moving` absent from ExtraSensory training | Model cannot reliably predict this class | Acknowledged in absent_classes; excluded from macro-F1 |
-| Jerk/FFT/phase broadcast as constants per window | LSTM cannot learn temporal patterns from them | Acknowledged; they act as static hints to the physics prior |
-| No HMM post-processing yet | Single-window blips not smoothed | B3 segment.py is designed; Viterbi not yet trained |
-| 0 swap on dev machine | OOM with > 2 workers | Workers capped at 2 via env var |
-| SLM not downloaded by default | Router falls back to rule-only | `python3 -m models.slm --download` |
+A typical raw accelerometer file is shaped like:
+
+```text
+raw_acc/<UUID>/<timestamp>.m_raw_acc.dat
+```
+
+A typical gyroscope file is shaped like:
+
+```text
+proc_gyro/<UUID>/<timestamp>.m_proc_gyro.dat
+```
 
 ---
 
-## Academic Citations
+## End-to-end pipeline overview
 
-| Source | Used in |
-|---|---|
-| Vaizman, Ellis & Lanckriet, IEEE Pervasive Computing 2017 (arXiv:1609.06354) | B0 burst structure, B1 gravity/body split |
-| DrHouse — Sui et al., ACM IMWUT 8(4), 2024, doi:10.1145/3699765 | B9 grounded reasoning pattern |
-| JARVIS for HVAC — Lee et al., ACM IMWUT 10(2), 2026, doi:10.1145/3810210 | B8 staged routing |
-| SensorChat — Yu et al., ACM IMWUT 9(3), 2025, doi:10.1145/3749496 | B8 qualitative vs. quantitative split |
-| Sensor2Text, ACM IMWUT 2024, doi:10.1145/3699747 | B9 NL interaction for activity tracking |
-| Ainsworth et al., Compendium of Physical Activities (pacompendium.com) | B_E MET values |
-| HMM for accelerometer data, PLOS ONE 2014 (PMC4251969) | B3 Viterbi smoothing |
-| Viterbi k-min-duration constraint, ResearchGate 268981604 | B3 minimum-duration constraint |
-| Fall detection rule, PMC4346101 | B4.5 impact → stillness → orientation-change |
-| Fall detection rule, Springer doi:10.1007/978-3-642-41043-7_2 | B4.5 same rule, independent source |
+```text
+Raw sensor data
+        ↓
+Preprocessing and feature extraction
+        ↓
+Model scoring + physics rules
+        ↓
+Window segmentation
+        ↓
+Signature/anomaly detection
+        ↓
+SQLite storage
+        ↓
+Rollup queries and dashboard
+        ↓
+Natural-language questions / summaries
+```
+
+### Key pipeline components
+
+- `data/preprocess.py`: resampling, gravity separation, body acceleration handling
+- `data/fusion.py`: complementary-filter style motion fusion logic
+- `data/physics_rules.py`: hand-written physics rules and feature definitions
+- `pipeline/recognize.py`: recognition features such as cadence, FFT, phase and jerk features
+- `pipeline/segment.py`: segmentation and post-processing logic
+- `analysis/store.py`: timeline, coverage, and anomaly persistence
+- `analysis/rollup.py`: daily rollup and aggregated summaries
+- `analysis/router.py`: routes questions into rule-based or SLM-based answer generation
+- `formatter.py`: formats answers with coverage checks and safe output
+
+---
+
+## Dashboard usage
+
+After starting the app:
+
+```bash
+streamlit run app.py
+```
+
+### Sidebar
+
+- set the SQLite database path
+- connect to an existing `pipeline.db` file
+- optionally set body mass for calorie estimates
+
+### Tabs
+
+- Timeline: browse recognized activity segments with coverage information
+- Ask: ask text questions about the recorded activity data
+- Trends: inspect daily activity totals and optional calorie estimates
+
+The app is designed to show uncertainty when coverage is low and will warn clearly when the data is insufficient for a confident answer.
+
+---
+
+## Training and evaluation
+
+Training should be run from the project root using Python module execution.
+
+### Train the burst model
+
+```bash
+python -m training.train_burst \
+  --epochs 40 \
+  --cap 3000 \
+  --out checkpoints/lstm_burst.pt \
+  --report checkpoints/report_burst.json
+```
+
+### Faster smoke-test training
+
+```bash
+python -m training.train_burst --epochs 20 --cap 1500 --hidden 64
+```
+
+### Optional local SLM model download
+
+The optional SLM layer can be downloaded on demand:
+
+```bash
+python -m models.slm --download
+```
+
+This allows the question-answering path to use a local model rather than only the rule-based router.
+
+---
+
+## Project structure
+
+```text
+.
+├── app.py
+├── run_pipeline.py
+├── formatter.py
+├── requirements.txt
+├── README.md
+├── checkpoints/
+├── analysis/
+├── data/
+├── models/
+├── pipeline/
+├── training/
+├── raw_acc/
+├── proc_gyro/
+├── arrays/
+└── tests/
+```
+
+---
+
+## Typical workflow
+
+1. Install the project dependencies.
+2. Gather accelerometer and gyroscope data.
+3. Run the pipeline to generate a database.
+4. Open the Streamlit app.
+5. Review the timeline and summaries.
+6. Ask domain questions about activity, duration, or daily trends.
+7. If needed, retrain the model using the training scripts.
+
+---
+
+## Notes on model behavior
+
+This project combines a learned activity model with a rules-based motion layer. The hybrid design is intended to improve robustness on real sensor data, especially when signal quality varies across time windows.
+
+A few important points:
+
+- The system is designed to work with real-world, noisy motion data.
+- Some transitions and activity boundaries are inherently ambiguous.
+- Coverage and signal quality matter for answer confidence.
+- The SLM is optional; the project can still operate without downloading the model.
+
+---
+
+## Edge deployment and cost considerations
+
+This project is designed to be usable both on a laptop workstation and on lower-power edge devices, but the cost and performance profile depends on which parts of the stack you use.
+
+### Typical resource footprint
+
+#### Core pipeline without SLM
+
+- CPU: lightweight to moderate usage for preprocessing, segmentation, and inference
+- RAM: usually manageable for local development and single-user processing
+- Disk: low to moderate, mostly for checkpoints and SQLite outputs
+- Good fit: laptops, mini PCs, small desktop devices, and edge hardware with standard Python support
+
+#### Optional local SLM route
+
+The local language model path adds the largest deployment cost:
+
+- model download size: roughly 2.3 GB for the Phi-3 Mini GGUF-style weight set
+- RAM usage: roughly 3–4 GB during active inference on CPU
+- inference latency: typically around 1–4 seconds per prompt depending on hardware and context length
+- best suited for: local desktop or small edge devices with enough RAM and storage
+
+### Hardware expectations
+
+#### Developer workstation or laptop
+
+- Recommended: 8 GB+ RAM for comfortable local use
+- Faster CPUs or moderate GPUs reduce inference and training time
+- Suitable for training experiments, model evaluation, and dashboard use
+
+#### Edge / embedded deployment
+
+Examples of realistic workload ranges:
+
+- Raspberry Pi 5 (8 GB): viable for core pipeline and low-cost local use, especially without heavy model inference
+- Jetson-class devices: better for combined pipeline and AI-assisted inference
+- x86 laptop / mini PC: easiest option for smooth dashboard and optional SLM use
+
+### Cost tradeoffs
+
+- Rule-based + pipeline-only mode is the cheapest and most robust for edge deployment.
+- Training is more expensive than inference, but it is usually done offline.
+- The optional SLM path increases both storage and memory cost substantially.
+- The dashboard itself is low-cost, but database and historical data can grow over time and require storage planning.
+
+### Practical recommendation
+
+For most users, the best cost/performance approach is:
+
+1. run the pipeline and SQLite storage locally
+2. keep the rule-based router active by default
+3. only enable the SLM route when natural-language reasoning is required
+4. use a stronger machine for training and heavier evaluation, while keeping production inference lean
+
+This keeps the system affordable while still preserving the higher-level question-answering capability.
+
+---
+
+## Troubleshooting
+
+### `No timestamp column found`
+
+This usually means the input file is headerless and space-separated. The parser is built to handle this, but the file must still contain time and sensor columns in a valid order.
+
+### `python training/train_burst.py` fails
+
+Run commands from the project root using `python -m ...` instead of direct script execution so the package imports resolve correctly.
+
+### Streamlit cannot open the database
+
+Check that the SQLite file exists and that the path in the sidebar is correct.
+
+### Questions return low confidence or missing answers
+
+This can happen when the underlying activity data has sparse or low-quality coverage. The formatter is intentionally conservative and warns when confident output cannot be supported.
+
+---
+
+## Summary
+
+Activity Tracker is a practical activity-recognition project for real sensor data, designed to be run end-to-end with minimal setup. It is intended for experimentation, dataset processing, model training, and interactive exploration in a single repository.
+
+If you want to use it for a sensor dataset, a proof of concept, or a personal activity-monitoring workflow, the repository is structured to handle the full loop from raw input to analysis and dashboard review.
+```
