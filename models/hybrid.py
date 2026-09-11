@@ -18,7 +18,7 @@ import numpy as np
 
 from data.physics_rules import Features, Thresholds, periodicity_from_vertical, predict_proba
 from data.preprocess import PreprocessedSignal
-from pipeline.recognize import Window, softmax, vertical_component
+from pipeline.recognize import Window, softmax, vertical_component, dominant_freq_hz, acc_gyro_phase
 
 __all__ = [
     "combine_probs",
@@ -100,13 +100,55 @@ def _window_to_features(window: Window, signal: PreprocessedSignal) -> Features:
     vertical = vertical_component(body, gravity)
     periodicity = float(periodicity_from_vertical(vertical, signal.fs))
 
+    # vertical_std: std of the gravity-projected body acceleration
+    fin_vert = vertical[np.isfinite(vertical)]
+    vert_std = float(np.std(fin_vert)) if fin_vert.size > 1 else 0.0
+
+    # jerk: first difference of body_acc * fs gives acceleration rate of change
+    diff = np.diff(body, axis=0) * signal.fs
+    jerk_mags = np.linalg.norm(diff, axis=1)
+    fin_jerk = jerk_mags[np.isfinite(jerk_mags)]
+    jerk_mean = float(np.mean(fin_jerk)) if fin_jerk.size > 0 else 0.0
+    jerk_std = float(np.std(fin_jerk)) if fin_jerk.size > 1 else 0.0
+
+    # dominant frequency via FFT
+    dom_hz = dominant_freq_hz(vertical, fs=signal.fs)
+
+    # zero-crossing rate of acc magnitude (Hz)
+    mags = np.linalg.norm(body, axis=1)
+    fin_mags = mags[np.isfinite(mags)]
+    if fin_mags.size > 1:
+        mean_mag = float(np.mean(fin_mags))
+        crossings = int(np.sum(np.diff((fin_mags > mean_mag).astype(np.int8)) != 0))
+        zcr = float(crossings) / (fin_mags.size / signal.fs)
+    else:
+        zcr = 0.0
+
+    # gyro features
     if window.gyro_rms is None:
         gyro_rms = 0.0
+        gyro_x_rms = gyro_y_rms = gyro_z_rms = 0.0
+        phase = 0.0
         has_gyro = False
     else:
         v = np.array([window.gyro_rms.x, window.gyro_rms.y, window.gyro_rms.z], dtype=np.float64)
+        gyro_x_rms = float(v[0]) if np.isfinite(v[0]) else 0.0
+        gyro_y_rms = float(v[1]) if np.isfinite(v[1]) else 0.0
+        gyro_z_rms = float(v[2]) if np.isfinite(v[2]) else 0.0
         gyro_rms = float(np.linalg.norm(v)) if np.all(np.isfinite(v)) else 0.0
         has_gyro = bool(signal.has_gyro)
+
+        # acc_gyro_phase: use the dominant gyro axis for the phase comparison
+        if signal.gyro_raw is not None:
+            gyro_slice = signal.gyro_raw[i0:i1]
+            rms_per_axis = np.array([
+                float(np.sqrt(np.nanmean(np.square(gyro_slice[:, ax]))))
+                for ax in range(3)
+            ])
+            dom_ax = int(np.argmax(rms_per_axis))
+            phase = acc_gyro_phase(vertical, gyro_slice[:, dom_ax], fs=signal.fs)
+        else:
+            phase = 0.0
 
     return Features(
         tilt_deg=tilt_deg,
@@ -115,6 +157,15 @@ def _window_to_features(window: Window, signal: PreprocessedSignal) -> Features:
         cadence_bpm=float(max(window.cadence_hz, 0.0) * 60.0),
         periodicity=periodicity,
         has_gyro=has_gyro,
+        jerk_mean=jerk_mean,
+        jerk_std=jerk_std,
+        dominant_freq_hz=dom_hz,
+        gyro_x_rms=gyro_x_rms,
+        gyro_y_rms=gyro_y_rms,
+        gyro_z_rms=gyro_z_rms,
+        vertical_std=vert_std,
+        zcr=zcr,
+        acc_gyro_phase=phase,
     )
 
 

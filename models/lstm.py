@@ -350,9 +350,12 @@ def _physics_probs_from_window(x: np.ndarray) -> np.ndarray:
     else:
         has_gyro = bool(np.nanmean(present) > 0.5)
 
-    # jerk: mean magnitude of frame-to-frame derivative of body_acc
+    # jerk: mean and std of frame-to-frame derivative of body_acc magnitude
     diff_body = np.diff(body, axis=0) * 25.0  # g/s at 25 Hz
-    jerk_mean = float(np.nanmean(np.linalg.norm(diff_body, axis=1))) if diff_body.size > 0 else 0.0
+    jerk_mags = np.linalg.norm(diff_body, axis=1) if diff_body.size > 0 else np.array([])
+    fin_jerk = jerk_mags[np.isfinite(jerk_mags)] if jerk_mags.size > 0 else np.array([])
+    jerk_mean = float(np.mean(fin_jerk)) if fin_jerk.size > 0 else 0.0
+    jerk_std = float(np.std(fin_jerk)) if fin_jerk.size > 1 else 0.0
 
     # axis-resolved gyro RMS
     gyro_x_rms = float(np.sqrt(np.nanmean(np.square(gyro[:, 0])))) if has_gyro else 0.0
@@ -360,8 +363,28 @@ def _physics_probs_from_window(x: np.ndarray) -> np.ndarray:
     gyro_z_rms = float(np.sqrt(np.nanmean(np.square(gyro[:, 2])))) if has_gyro else 0.0
 
     # FFT dominant frequency on vertical component
-    from pipeline.recognize import dominant_freq_hz as _dom_freq
+    from pipeline.recognize import dominant_freq_hz as _dom_freq, acc_gyro_phase as _phase
     dom_freq = _dom_freq(vertical, fs=25.0)
+
+    # acc_gyro_phase using the dominant gyro axis
+    if has_gyro:
+        rms_axes = np.array([gyro_x_rms, gyro_y_rms, gyro_z_rms])
+        dom_ax = int(np.argmax(rms_axes))
+        phase = _phase(vertical, gyro[:, dom_ax], fs=25.0)
+    else:
+        phase = 0.0
+
+    # vertical_std and zcr
+    fin_vert = vertical[np.isfinite(vertical)]
+    vert_std = float(np.std(fin_vert)) if fin_vert.size > 1 else 0.0
+    mags = np.linalg.norm(body, axis=1)
+    fin_mags = mags[np.isfinite(mags)]
+    if fin_mags.size > 1:
+        mean_mag = float(np.mean(fin_mags))
+        crossings = int(np.sum(np.diff((fin_mags > mean_mag).astype(np.int8)) != 0))
+        zcr = float(crossings) / (fin_mags.size / 25.0)
+    else:
+        zcr = 0.0
 
     feats = {
         "tilt_deg": tilt_deg,
@@ -371,10 +394,14 @@ def _physics_probs_from_window(x: np.ndarray) -> np.ndarray:
         "periodicity": periodicity,
         "has_gyro": has_gyro,
         "jerk_mean": jerk_mean,
+        "jerk_std": jerk_std,
         "dominant_freq_hz": dom_freq,
         "gyro_x_rms": gyro_x_rms,
         "gyro_y_rms": gyro_y_rms,
         "gyro_z_rms": gyro_z_rms,
+        "vertical_std": vert_std,
+        "zcr": zcr,
+        "acc_gyro_phase": phase,
     }
     th = Thresholds()
     return np.asarray(predict_proba(Features(**feats), th), dtype=np.float64)

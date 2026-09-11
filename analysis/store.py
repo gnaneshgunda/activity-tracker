@@ -275,7 +275,11 @@ class ActivityStore:
             self._array_dir = Path(db_str).parent / "arrays"
         self._array_dir.mkdir(parents=True, exist_ok=True)
 
-        self._con = sqlite3.connect(db_str)
+        # check_same_thread=False allows the connection to be used from
+        # Streamlit callback threads. The _lock serialises concurrent writes.
+        import threading
+        self._lock = threading.Lock()
+        self._con = sqlite3.connect(db_str, check_same_thread=False)
         self._con.row_factory = sqlite3.Row
         self._con.execute("PRAGMA foreign_keys = ON")
         self._con.execute("PRAGMA journal_mode = WAL")
@@ -354,9 +358,10 @@ class ActivityStore:
                     row.segment_id,
                 )
 
-        with self._con:
-            self._con.execute(
-                """
+        with self._lock:
+            with self._con:
+                self._con.execute(
+                    """
                 INSERT INTO timeline (
                     segment_id, uuid, t_label_start_ref,
                     t_start, t_end,
@@ -440,9 +445,10 @@ class ActivityStore:
         :meth:`get_anomalies`.
         """
         event_id = f"{event.segment_id}:{event.method}"
-        with self._con:
-            self._con.execute(
-                """
+        with self._lock:
+            with self._con:
+                self._con.execute(
+                    """
                 INSERT INTO anomaly_events (
                     event_id, segment_id,
                     uuid, t_label_start_ref,

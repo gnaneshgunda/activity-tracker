@@ -587,8 +587,78 @@ def _burst_sequence(args) -> Optional[tuple[np.ndarray, int, str, int]]:
     body = np.where(valid[:, None], body, 0.0)
     grav = np.where(valid[:, None], grav, 0.0)
 
-    block = np.concatenate([body, grav, gy, present, valid.astype(np.float64)[:, None]], axis=1)
-    if n < timesteps:                      # zero-pad, valid flag already 0 there
+    # ---- derived physics features (scalar per burst, broadcast to all timesteps) ----
+    import math
+    vertical = vertical_component(body, grav)
+    sma = float(np.nanmean(np.linalg.norm(body, axis=1)))
+
+    # tilt: angle between mean gravity and screen-up reference (0,0,-1)
+    g_mean = np.nanmean(grav, axis=0)
+    g_norm = float(np.linalg.norm(g_mean))
+    if g_norm > 1e-9:
+        cos_t = float(np.dot(g_mean / g_norm, [0.0, 0.0, -1.0]))
+        tilt_deg = float(math.degrees(math.acos(max(-1.0, min(1.0, cos_t)))))
+    else:
+        tilt_deg = 90.0
+
+    fin_vert = vertical[np.isfinite(vertical)]
+    vert_std = float(np.nanstd(fin_vert)) if fin_vert.size > 1 else 0.0
+    cadence_hz, _, _ = cadence_from_vertical(vertical, fs=sig.fs, sma=sma)
+    cadence_hz = float(cadence_hz) if math.isfinite(cadence_hz) else 0.0
+
+    from data.physics_rules import periodicity_from_vertical
+    periodicity = float(periodicity_from_vertical(vertical, sig.fs))
+
+    # jerk mean
+    diff_body = np.diff(body, axis=0) * sig.fs
+    fin_jerk = np.linalg.norm(diff_body, axis=1)
+    jerk_mean = float(np.nanmean(fin_jerk)) if fin_jerk.size > 0 else 0.0
+
+    # per-axis gyro RMS
+    gyro_x_rms = float(np.sqrt(np.nanmean(np.square(gy[:, 0])))) if sig.has_gyro else 0.0
+    gyro_y_rms = float(np.sqrt(np.nanmean(np.square(gy[:, 1])))) if sig.has_gyro else 0.0
+    gyro_z_rms = float(np.sqrt(np.nanmean(np.square(gy[:, 2])))) if sig.has_gyro else 0.0
+    gyro_vec_rms = math.sqrt(gyro_x_rms**2 + gyro_y_rms**2 + gyro_z_rms**2)
+
+    # rotation_ratio = gyro_rms / (sma + eps)
+    rotation_ratio = float(gyro_vec_rms / (sma + 1e-6))
+
+    # dominant freq and acc_gyro_phase
+    dom_hz = float(dominant_freq_hz(vertical, fs=sig.fs))
+    if sig.has_gyro and gyro_vec_rms > 1e-9:
+        rms_axes = np.array([gyro_x_rms, gyro_y_rms, gyro_z_rms])
+        dom_ax = int(np.argmax(rms_axes))
+        phase = float(acc_gyro_phase(vertical, gy[:, dom_ax], fs=sig.fs))
+    else:
+        phase = 0.0
+
+    # phone placement (all zeros if not in label file — unknown placement)
+    phys_features = np.array([
+        tilt_deg / 90.0,   # normalise to ~[-2, 2] range
+        sma,
+        cadence_hz,
+        periodicity,
+        vert_std,
+        rotation_ratio,
+        jerk_mean,
+        gyro_x_rms,
+        gyro_y_rms,
+        gyro_z_rms,
+        dom_hz,
+        phase,
+        0.0, 0.0, 0.0, 0.0,  # phone placement flags (unknown)
+    ], dtype=np.float64)  # 16 values = 12 physics + 4 placement
+
+    # broadcast physics features as constant columns across all timesteps
+    phys_block = np.tile(phys_features[None, :], (n, 1))  # (n, 16)
+
+    block = np.concatenate([
+        body, grav, gy, present,   # 10 raw channels
+        phys_block,                # 16 derived + placement channels
+        valid.astype(np.float64)[:, None],  # sample_valid (1)
+    ], axis=1)  # total: 27 = len(SEQ_CHANNELS)
+
+    if n < timesteps:
         block = np.vstack([block, np.zeros((timesteps - n, block.shape[1]))])
     return block.astype(np.float32), label_index, uuid, ts
 

@@ -55,6 +55,7 @@ import numpy as np
 from scipy.signal import butter, sosfiltfilt
 
 from data.ingest import IngestedExample, MinuteBurst, SensorBurst
+from data.fusion import fuse_gravity, DEFAULT_TAU_S
 
 __all__ = [
     "PreprocessedSignal",
@@ -147,6 +148,9 @@ class PreprocessFlag(str):
     UNIT_CONVERTED_FROM_MS2 = "unit_converted_from_ms2"
     #: Resting magnitude matched neither unit band; left unconverted.
     UNIT_AMBIGUOUS = "unit_ambiguous"
+    #: Gravity was estimated via complementary filter fusing accelerometer
+    #: and gyroscope. More accurate during motion than low-pass-only.
+    GRAVITY_FUSED = "gravity_fused"
 
 
 @dataclass(frozen=True)
@@ -455,12 +459,29 @@ def preprocess_burst(
     lowpass_cutoff_hz: float = LOWPASS_CUTOFF_HZ,
     gravity_cutoff_hz: float = GRAVITY_CUTOFF_HZ,
     accel_unit: Optional[str] = None,
+    use_fusion: bool = True,
+    fusion_tau_s: float = DEFAULT_TAU_S,
 ) -> PreprocessedSignal:
     """Resample, filter and gravity-split one :class:`ingest.MinuteBurst`.
 
-    ``accel_unit`` forces the source unit (:class:`AccelUnit`); by default it is
-    detected per burst with :func:`detect_accel_unit`. Accelerometer output is
-    always in g.
+    Parameters
+    ----------
+    use_fusion:
+        When ``True`` (default) and a gyroscope is present, the gravity
+        estimate is computed by a complementary filter that fuses the
+        accelerometer with the gyroscope (:func:`data.fusion.fuse_gravity`).
+        This removes the 2-13 deg tilt drift that the low-pass-only estimator
+        accumulates during walking. Falls back to the Butterworth low-pass
+        automatically when no gyroscope is available or when ``use_fusion``
+        is ``False``.
+    fusion_tau_s:
+        Complementary-filter time constant. Default (:data:`data.fusion.DEFAULT_TAU_S`)
+        is 1.5 s, chosen to sit above human gait period so a stride's linear
+        acceleration cannot drag the estimate.
+    accel_unit:
+        Forces the source unit (:class:`AccelUnit`); by default it is
+        detected per burst with :func:`detect_accel_unit`. Accelerometer output
+        is always in g.
     """
     acc_t, acc_xyz, flags_list = _prepare(burst.acc)
     flags: set[str] = set(flags_list)
@@ -486,8 +507,8 @@ def preprocess_burst(
         flags.add(PreprocessFlag.HAS_GAPS)
 
     acc_filt, f1 = lowpass(acc_raw, cutoff_hz=lowpass_cutoff_hz, fs=fs)
-    gravity, f2 = estimate_gravity(acc_raw, cutoff_hz=gravity_cutoff_hz, fs=fs)
-    body_acc = acc_raw - gravity
+    # Gravity via Butterworth low-pass (always computed; used as fallback).
+    gravity_lp, f2 = estimate_gravity(acc_raw, cutoff_hz=gravity_cutoff_hz, fs=fs)
     flags.update(f1)
     flags.update(f2)
 
@@ -509,8 +530,25 @@ def preprocess_burst(
             gyro_raw[inside, :] = np.nan
         gyro_filt, f3 = lowpass(gyro_raw, cutoff_hz=lowpass_cutoff_hz, fs=fs)
         flags.update(f3)
+
+        # Replace the low-pass gravity estimate with the complementary-filter
+        # fusion if requested. fuse_gravity uses gyro where available and
+        # falls back sample-by-sample to acc-only where the gyro has NaN.
+        if use_fusion:
+            fused = fuse_gravity(acc_raw, gyro_raw, fs=fs, tau_s=fusion_tau_s)
+            gravity = fused.gravity
+            flags.add(PreprocessFlag.GRAVITY_FUSED)
+            log.debug(
+                "uuid=%s ts=%d fused gravity: fused_fraction=%.2f",
+                uuid, timestamp, fused.fused_fraction,
+            )
+        else:
+            gravity = gravity_lp
     else:
         flags.add(PreprocessFlag.NO_GYRO)
+        gravity = gravity_lp
+
+    body_acc = acc_raw - gravity
 
     valid = np.all(np.isfinite(acc_raw), axis=1)
     return PreprocessedSignal(

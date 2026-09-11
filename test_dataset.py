@@ -86,13 +86,20 @@ def test_sampling_is_without_replacement() -> None:
 
 
 def test_normaliser_standardises_training_channels() -> None:
+    from dataset import FLAG_CHANNELS
     rng = np.random.default_rng(0)
     X = rng.normal(loc=5.0, scale=3.0, size=(200, 50, N_CHANNELS)).astype(np.float32)
-    X[..., CHANNELS.index("gyro_present")] = 1.0
+    # Set all flag channels to a constant so they are not part of the
+    # standardised set; their indices should be excluded from the assertions.
+    flag_indices = set()
+    for name in FLAG_CHANNELS:
+        if name in CHANNELS:
+            i = CHANNELS.index(name)
+            X[..., i] = 1.0
+            flag_indices.add(i)
     n = fit_normaliser(X)
     Z = n.apply(X)
-    flag = CHANNELS.index("gyro_present")
-    others = [i for i in range(N_CHANNELS) if i != flag]
+    others = [i for i in range(N_CHANNELS) if i not in flag_indices]
     assert np.allclose(Z[..., others].reshape(-1, len(others)).mean(axis=0), 0, atol=1e-4)
     assert np.allclose(Z[..., others].reshape(-1, len(others)).std(axis=0), 1, atol=1e-3)
 
@@ -125,7 +132,10 @@ def test_normaliser_roundtrip(tmp_path) -> None:
 
 def test_channel_order_documented() -> None:
     assert len(CHANNELS) == N_CHANNELS
-    assert CHANNELS[-1] == "gyro_present"
+    # gyro_present is the last raw-sensor channel (index 9), followed by
+    # derived physics features then placement flags.
+    assert CHANNELS[9] == "gyro_present"
+    assert CHANNELS[-1] == "phone_table"
     assert len(set(CHANNELS)) == N_CHANNELS
 
 

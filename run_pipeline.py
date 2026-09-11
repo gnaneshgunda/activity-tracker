@@ -79,18 +79,58 @@ def _parse_timestamp(val: str, first_ts: Optional[float] = None) -> float:
 
 
 def _read_csv(path: str | Path) -> tuple[np.ndarray, list[str]]:
-    """Read a CSV file, returning (data_array, header_names)."""
-    import csv
+    """Read a CSV/DAT file, returning (rows, header_names).
+
+    Handles:
+    - Comma-separated CSV with a header row
+    - Space/tab-separated .dat files with NO header (ExtraSensory raw format)
+    Auto-detects delimiter and whether the first row is a header.
+    """
+    import csv as _csv
 
     path = Path(path)
-    rows = []
     with open(path, "r", newline="") as f:
-        reader = csv.reader(f)
-        header = [h.strip().lower() for h in next(reader)]
-        for row in reader:
-            if not row or all(c.strip() == "" for c in row):
-                continue
-            rows.append(row)
+        raw = f.read()
+
+    # Auto-detect delimiter: try comma first, fall back to whitespace
+    first_line = raw.lstrip().split("\n")[0].strip()
+    if "," in first_line:
+        delimiter = ","
+        lines = [l for l in raw.splitlines() if l.strip()]
+        reader = _csv.reader(lines, delimiter=",")
+        all_rows = [row for row in reader if row and any(c.strip() for c in row)]
+    else:
+        # Space/tab separated — split on whitespace
+        all_rows = [line.split() for line in raw.splitlines()
+                    if line.strip() and not line.strip().startswith("#")]
+
+    if not all_rows:
+        return [], []
+
+    # Decide if first row is a header: if any cell is non-numeric, it's a header
+    def _is_numeric(s: str) -> bool:
+        try:
+            float(s)
+            return True
+        except ValueError:
+            return False
+
+    first_row = all_rows[0]
+    if all(_is_numeric(c.strip()) for c in first_row if c.strip()):
+        # No header — synthesise column names: timestamp, x, y, z, ...
+        n_cols = len(first_row)
+        if n_cols == 4:
+            header = ["timestamp", "x", "y", "z"]
+        elif n_cols == 7:
+            header = ["timestamp", "acc_x", "acc_y", "acc_z", "gyro_x", "gyro_y", "gyro_z"]
+        else:
+            header = ["timestamp"] + [f"col{i}" for i in range(1, n_cols)]
+        rows = all_rows
+    else:
+        header = [h.strip().lower() for h in first_row]
+        rows = all_rows[1:]
+
+    rows = [r for r in rows if r and any(c.strip() for c in r)]
     return rows, header
 
 
@@ -230,12 +270,14 @@ def _window_to_features(window) -> "Features":
         has_gyro=has_gyro,
         phone_placement=PhonePlacement.UNKNOWN,
         jerk_mean=0.0,
+        jerk_std=0.0,
         dominant_freq_hz=0.0,
         gyro_x_rms=gyro_x,
         gyro_y_rms=gyro_y,
         gyro_z_rms=gyro_z,
         vertical_std=vstd,
         zcr=0.0,
+        acc_gyro_phase=0.0,
     )
 
 
@@ -346,20 +388,18 @@ def run_pipeline(
         uuid = user_id
 
         # Build SensorBurst objects
-        acc_burst = SensorBurst(timestamps=c_acc_t, xyz=c_acc)
+        acc_burst = SensorBurst(t=c_acc_t, xyz=c_acc)
         gyro_burst = None
         if c_gyro_t is not None and c_gyro is not None:
-            gyro_burst = SensorBurst(timestamps=c_gyro_t, xyz=c_gyro)
+            gyro_burst = SensorBurst(t=c_gyro_t, xyz=c_gyro)
 
         burst = MinuteBurst(
-            uuid=uuid,
-            timestamp=chunk_ts,
             acc=acc_burst,
             gyro=gyro_burst,
         )
 
         try:
-            signal = preprocess_burst(burst)
+            signal = preprocess_burst(burst, uuid=uuid, timestamp=chunk_ts)
         except Exception as exc:
             log.warning("Chunk %d preprocess failed: %s", ci, exc)
             continue
@@ -458,4 +498,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-""", "Description": "End-to-end pipeline runner that chains CSV parsing → B1 preprocess → B2 extract_windows → physics scoring → B3 segment/HMM → B5 SQLite store. Supports separate acc/gyro CSVs or combined CSV.", "Overwrite": false, "TargetFile": "c:\\Users\\abhir\\OneDrive\\Desktop\\activity-tracker\\run_pipeline.py", "toolAction": "Creating run_pipeline.py", "toolSummary": "Pipeline runner script"}

@@ -98,6 +98,8 @@ def row_to_features(row):
         gyro_z_rms=abs(gyro_z) if math.isfinite(gyro_z) else 0.0,
         vertical_std=vertical_std,
         zcr=zcr,
+        jerk_std=0.0,       # not available from pre-computed ExtraSensory columns
+        acc_gyro_phase=0.0, # not available from pre-computed ExtraSensory columns
     )
 
 
@@ -231,11 +233,17 @@ def main():
     print("\nFitting thresholds (coordinate ascent)...")
     from data.physics_rules import _DEFAULT_GRID
     grid = dict(_DEFAULT_GRID)
-    # Calibrate SMA ranges for ExtraSensory's pre-computed std feature
-    # (raw_acc:magnitude_stats:std — gravity-contaminated but useful).
+    # Calibrate SMA ranges for ExtraSensory's pre-computed std feature.
+    # raw_acc:magnitude_stats:std: lying~0.002, sitting~0.003,
+    # standing~0.004, walking~0.12, running~0.68, cycling~0.16.
     grid["static_sma"] = [0.003, 0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.07]
-    grid["run_sma"]    = [0.06, 0.08, 0.10, 0.14, 0.18, 0.22, 0.28, 0.35]
-    th = Thresholds.fit(train_rows, grid=grid, n_restarts=2)
+    grid["run_sma"]    = [0.06, 0.08, 0.10, 0.14, 0.18, 0.22, 0.28, 0.35, 0.45, 0.60]
+    # SMA tie-breaker in posture: lying is quieter than sitting
+    grid["lie_sma_tilt_hi"] = [0.001, 0.002, 0.003, 0.004, 0.006, 0.010]
+    # Up-weight rare locomotion classes so the fitter doesn't sacrifice them
+    # for the dominant posture classes.
+    class_weights = {"running": 2.0, "bicycling": 2.0, "walking": 1.5}
+    th = Thresholds.fit(train_rows, grid=grid, n_restarts=3, class_weights=class_weights)
     print(f"  {th.as_dict()}")
 
     # ── 3. Build HMM transition matrix from train sequences ────────────────
