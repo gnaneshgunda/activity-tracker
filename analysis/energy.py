@@ -53,7 +53,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from ingest import TARGET_CLASSES
+from data.ingest import TARGET_CLASSES
 
 __all__ = [
     "EnergyEstimate",

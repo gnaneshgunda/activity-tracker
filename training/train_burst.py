@@ -11,9 +11,9 @@ from pathlib import Path
 
 import numpy as np
 
-import dataset as ds
-from ingest import TARGET_CLASSES
-from lstm import TrainConfig, evaluate, save_checkpoint, train
+from data import dataset as ds
+from data.ingest import TARGET_CLASSES
+from models.lstm import TrainConfig, evaluate, save_checkpoint, train
 
 RAW = "."
 LABELS = "ExtraSensory.per_uuid_features_labels"

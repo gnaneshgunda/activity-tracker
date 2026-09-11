@@ -61,9 +61,9 @@ from typing import Optional, Sequence
 
 import numpy as np
 
-from preprocess import PreprocessedSignal
-from recognize import Window, WindowFlag, CADENCE_BAND_HZ, SMA_QUIET_G
-from segment import Segment
+from data.preprocess import PreprocessedSignal
+from pipeline.recognize import Window, WindowFlag, CADENCE_BAND_HZ, SMA_QUIET_G
+from pipeline.segment import Segment
 
 __all__ = [
     "Signature",

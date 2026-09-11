@@ -172,7 +172,7 @@ DEFAULT_RULES: tuple[_Rule, ...] = (
     # -- B_ENERGY: energy / calorie ------------------------------------------
     # Must precede generic TASK2 "how many" patterns.
     _r(
-        r"\b(calori|kcal|energy|expenditure|burn|kilocal)\b",
+        r"\b(calori\w*|kcal|energy|expenditure|burn|kilocal)\b",
         Route.B_ENERGY,
         0.95,
         "energy/calorie keyword matched (B_ENERGY)",
@@ -259,6 +259,33 @@ DEFAULT_RULES: tuple[_Rule, ...] = (
         "rolling trend keyword (TASK2)",
     ),
 
+    # -- TASK1: label / probability look-up ---------------------------------
+    # SensorChat split: "what was she doing" → qualitative label look-up.
+    _r(
+        r"\b(what (was|is|were) (she|he|they) doing)\b",
+        Route.TASK1,
+        0.95,
+        "activity label look-up (TASK1)",
+    ),
+    _r(
+        r"\b(what activity|which activity|what (was|is) the activity)\b",
+        Route.TASK1,
+        0.93,
+        "direct activity query (TASK1)",
+    ),
+    _r(
+        r"\b(probability|confidence|likelihood|how (sure|certain|confident))\b",
+        Route.TASK1,
+        0.90,
+        "probability/confidence query (TASK1)",
+    ),
+    _r(
+        r"\b(is she|is he|are they|could she|might she) (walking|running|sitting|lying|standing|cycling|bicycl)\b",
+        Route.TASK1,
+        0.88,
+        "binary activity query (TASK1)",
+    ),
+
     # -- TASK3: grounding / onset / coverage-checked timestamps -------------
     # Qualitative onset questions.
     _r(
@@ -290,33 +317,6 @@ DEFAULT_RULES: tuple[_Rule, ...] = (
         Route.TASK3,
         0.82,
         "duration-of-specific-event question (TASK3); overlaps TASK2 — use TASK3 for single-event grounding",
-    ),
-
-    # -- TASK1: label / probability look-up ---------------------------------
-    # SensorChat split: "what was she doing" → qualitative label look-up.
-    _r(
-        r"\b(what (was|is|were) (she|he|they) doing)\b",
-        Route.TASK1,
-        0.95,
-        "activity label look-up (TASK1)",
-    ),
-    _r(
-        r"\b(what activity|which activity|what (was|is) the activity)\b",
-        Route.TASK1,
-        0.93,
-        "direct activity query (TASK1)",
-    ),
-    _r(
-        r"\b(probability|confidence|likelihood|how (sure|certain|confident))\b",
-        Route.TASK1,
-        0.90,
-        "probability/confidence query (TASK1)",
-    ),
-    _r(
-        r"\b(is she|is he|are they|could she|might she) (walking|running|sitting|lying|standing|cycling|bicycl)\b",
-        Route.TASK1,
-        0.88,
-        "binary activity query (TASK1)",
     ),
 
     # -- TASK4: open-world / explanatory / RAG + SLM -------------------------
@@ -701,7 +701,24 @@ def build_router(
 
 
 # ---------------------------------------------------------------------------
-# Module-level default (rule-only; no SLM wired)
+# Module-level default — SLM wired lazily from models.slm
 # ---------------------------------------------------------------------------
 
-_default_config = RouterConfig()
+def _make_default_config() -> RouterConfig:
+    """Build the default RouterConfig, wiring the SLM if weights are present.
+
+    The SLM is loaded lazily (on first ambiguous question), so startup is
+    always fast even when the model file is absent.  When the file is missing
+    the router falls back to rule-only mode and logs a warning once.
+    """
+    try:
+        from models.slm import get_slm
+        slm = get_slm()
+        # Use the routing-optimised variant: greedy, max_tokens=10
+        return RouterConfig(slm_fn=slm.for_routing())
+    except Exception as exc:  # pragma: no cover
+        log.debug("SLM not available for router (%s); rule-only mode active", exc)
+        return RouterConfig()
+
+
+_default_config = _make_default_config()

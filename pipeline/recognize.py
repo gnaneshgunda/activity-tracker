@@ -38,8 +38,11 @@ from typing import Callable, Iterable, Optional, Sequence
 import numpy as np
 from scipy.signal import find_peaks
 
-from ingest import TARGET_CLASSES
-from preprocess import PreprocessedSignal
+from data.ingest import TARGET_CLASSES
+from data.preprocess import PreprocessedSignal
+
+#: Cadence band used for FFT dominant-frequency extraction.
+_FFT_BAND_HZ = (0.5, 5.0)
 
 __all__ = [
     "Window",
@@ -56,6 +59,8 @@ __all__ = [
     "attach_probs",
     "cadence_from_vertical",
     "vertical_component",
+    "dominant_freq_hz",
+    "acc_gyro_phase",
 ]
 
 log = logging.getLogger(__name__)
@@ -267,6 +272,65 @@ def normalized_entropy(probs: np.ndarray) -> float:
 # --------------------------------------------------------------------------
 # Features
 # --------------------------------------------------------------------------
+
+
+def dominant_freq_hz(
+    vertical: np.ndarray,
+    *,
+    fs: float,
+    band_hz: tuple[float, float] = _FFT_BAND_HZ,
+) -> float:
+    """Dominant frequency (Hz) of the vertical body-acceleration via FFT.
+
+    More robust than autocorrelation for noisy or short windows. Returns 0.0
+    when the signal is too short or has no energy in the cadence band.
+    """
+    v = np.asarray(vertical, dtype=np.float64)
+    v = v[np.isfinite(v)]
+    if v.size < 4:
+        return 0.0
+    v = v - v.mean()
+    n = v.size
+    freqs = np.fft.rfftfreq(n, d=1.0 / fs)
+    power = np.abs(np.fft.rfft(v)) ** 2
+    lo, hi = band_hz
+    mask = (freqs >= lo) & (freqs <= hi)
+    if not np.any(mask):
+        return 0.0
+    return float(freqs[mask][np.argmax(power[mask])])
+
+
+def acc_gyro_phase(
+    vertical: np.ndarray,
+    gyro_axis: np.ndarray,
+    *,
+    fs: float,
+    band_hz: tuple[float, float] = _FFT_BAND_HZ,
+) -> float:
+    """Phase alignment between vertical acc and a gyro axis at the dominant freq.
+
+    Returns the cosine of the phase difference in [-1, 1]. Values near 1 mean
+    the two signals are in phase (walking/running pendulum swing); near 0 means
+    uncorrelated (cycling, static). Returns 0.0 when either signal is unusable.
+    """
+    a = np.asarray(vertical, dtype=np.float64)
+    g = np.asarray(gyro_axis, dtype=np.float64)
+    valid = np.isfinite(a) & np.isfinite(g)
+    if valid.sum() < 4:
+        return 0.0
+    a, g = a[valid] - a[valid].mean(), g[valid] - g[valid].mean()
+    n = a.size
+    freqs = np.fft.rfftfreq(n, d=1.0 / fs)
+    lo, hi = band_hz
+    mask = (freqs >= lo) & (freqs <= hi)
+    if not np.any(mask):
+        return 0.0
+    fa = np.fft.rfft(a)[mask]
+    fg = np.fft.rfft(g)[mask]
+    # phase difference at the dominant acc frequency
+    peak_idx = int(np.argmax(np.abs(fa)))
+    phase_diff = np.angle(fa[peak_idx]) - np.angle(fg[peak_idx])
+    return float(np.cos(phase_diff))
 
 
 def vertical_component(body_acc: np.ndarray, gravity: np.ndarray) -> np.ndarray:

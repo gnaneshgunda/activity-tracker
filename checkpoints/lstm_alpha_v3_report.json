@@ -1,0 +1,263 @@
+{
+ "split": {
+  "train": [
+   "00EABED2-271D-49D8-B599-1D4A09240601",
+   "098A72A5-E3E5-4F54-A152-BBDA0DF7B694",
+   "0A986513-7828-4D53-AA1F-E02D6DF9561B",
+   "0BFC35E2-4817-4865-BFA7-764742302A2D",
+   "11B5EC4D-4133-4289-B475-4E737182A406",
+   "1538C99F-BA1E-4EFB-A949-6C7C47701B20",
+   "1DBB0F6F-1F81-4A50-9DF4-CD62ACFA4842",
+   "24E40C4C-A349-4F9F-93AB-01D00FB994AF",
+   "27E04243-B138-4F40-A164-F40B60165CF3",
+   "2C32C23E-E30C-498A-8DD2-0EFB9150A02E",
+   "33A85C34-CFE4-4732-9E73-0A7AC861B27A",
+   "3600D531-0C55-44A7-AE95-A7A38519464E",
+   "40E170A7-607B-4578-AF04-F021C3B0384A",
+   "481F4DD2-7689-43B9-A2AA-C8772227162B",
+   "5119D0F8-FCA8-4184-A4EB-19421A40DE0D",
+   "59818CD2-24D7-4D32-B133-24C2FE3801E5",
+   "59EEFAE0-DEB0-4FFF-9250-54D2A03D0CF2",
+   "5EF64122-B513-46AE-BCF1-E62AAC285D2C",
+   "665514DE-49DC-421F-8DCB-145D0B2609AD",
+   "7CE37510-56D0-4120-A1CF-0E23351428D2",
+   "8023FE1A-D3B0-4E2C-A57A-9321B7FC755F",
+   "806289BC-AD52-4CC1-806C-0CDB14D65EB6",
+   "81536B0A-8DBF-4D8A-AC24-9543E2E4C8E0",
+   "83CF687B-7CEC-434B-9FE8-00C3D5799BE6",
+   "86A4F379-B305-473D-9D83-FC7D800180EF",
+   "9759096F-1119-4E19-A0AD-6F16989C7E1C",
+   "9DC38D04-E82E-4F29-AB52-B476535226F2",
+   "A5A30F76-581E-4757-97A2-957553A2C6AA",
+   "A7599A50-24AE-46A6-8EA6-2576F1011D81",
+   "B09E373F-8A54-44C8-895B-0039390B859F",
+   "B7F9D634-263E-4A97-87F9-6FFB4DDCB36C",
+   "B9724848-C7E2-45F4-9B3F-A1F38D864495",
+   "CA820D43-E5E2-42EF-9798-BE56F776370B",
+   "CDA3BBF7-6631-45E8-85BA-EEB416B32A3C",
+   "E65577C1-8D5D-4F70-AF23-B3ADB9D3DBA3",
+   "F50235E0-DD67-4F2A-B00B-1F31ADA998B9"
+  ],
+  "val": [
+   "0E6184E1-90C0-48EE-B25A-F1ECB7B9714E",
+   "5152A2DF-FAF3-4BA8-9CA9-E66B32671A53",
+   "61976C24-1C50-4355-9C49-AAE44A7D09F6",
+   "797D145F-3858-4A7F-A7C2-A4EB721E133C",
+   "7D9BB102-A612-4E2A-8E22-3159752F55D8",
+   "96A358A0-FFF2-4239-B93E-C7425B901B47",
+   "A5CDF89D-02A2-4EC1-89F8-F534FDABDD96",
+   "BE3CA5A6-A561-4BBD-B7C9-5DF6805400FC",
+   "BEF6C611-50DA-4971-A040-87FB979F3FC1",
+   "CCAF77F0-FABB-4F2F-9E24-D56AD0C5A82F",
+   "CF722AA9-2533-4E51-9FEB-9EAC84EE9AAC",
+   "ECECC2AB-D32F-4F90-B74C-E12A1C69BBE2"
+  ],
+  "test": [
+   "1155FF54-63D3-4AB2-9863-8385D0BD0A13",
+   "136562B6-95B2-483D-88DC-065F28409FD2",
+   "4E98F91F-4654-42EF-B908-A3389443F2E7",
+   "4FC32141-E888-4BFF-8804-12559A491D8C",
+   "61359772-D8D8-480D-B623-7C636EAD0C81",
+   "74B86067-5D4B-43CF-82CF-341B76BEA0F4",
+   "78A91A4E-4A51-4065-BDA7-94755F0BB3BB",
+   "99B204C0-DD5C-4BB7-83E8-A37281B8D769",
+   "A76A5AF5-5A93-4CF2-A16E-62353BB70E8A",
+   "C48CE857-A0DD-4DDB-BEA5-3A25449B2153",
+   "D7D20E2E-FC78-405D-B346-DBD3FD8FC92B",
+   "FDAA70A1-42A3-4E3F-9AE3-3FDA412E03BF"
+  ]
+ },
+ "train_counts": {
+  "lying down": 5713,
+  "sitting": 5594,
+  "standing in place": 5532,
+  "standing and moving": 0,
+  "walking": 5488,
+  "running": 5016,
+  "bicycling": 5747
+ },
+ "absent_classes": [
+  "standing and moving"
+ ],
+ "best_epoch": 2,
+ "best_val_macro_f1": 0.30152757159793764,
+ "history": [
+  {
+   "epoch": 0,
+   "train_loss": 1.2162430554871546,
+   "val_macro_f1": 0.2773439368620939,
+   "val_accuracy": 0.302112
+  },
+  {
+   "epoch": 1,
+   "train_loss": 1.0518856132488015,
+   "val_macro_f1": 0.27001161007105295,
+   "val_accuracy": 0.2944
+  },
+  {
+   "epoch": 2,
+   "train_loss": 0.9776809195028976,
+   "val_macro_f1": 0.30152757159793764,
+   "val_accuracy": 0.330272
+  },
+  {
+   "epoch": 3,
+   "train_loss": 0.9134419006319988,
+   "val_macro_f1": 0.2567785512233005,
+   "val_accuracy": 0.29264
+  },
+  {
+   "epoch": 4,
+   "train_loss": 0.8521630086903127,
+   "val_macro_f1": 0.2553040555711132,
+   "val_accuracy": 0.28976
+  },
+  {
+   "epoch": 5,
+   "train_loss": 0.8073218330637355,
+   "val_macro_f1": 0.26809146242203785,
+   "val_accuracy": 0.293152
+  },
+  {
+   "epoch": 6,
+   "train_loss": 0.7130731441780821,
+   "val_macro_f1": 0.2726266708353348,
+   "val_accuracy": 0.289344
+  },
+  {
+   "epoch": 7,
+   "train_loss": 0.6814826224714148,
+   "val_macro_f1": 0.24777335041049853,
+   "val_accuracy": 0.281088
+  },
+  {
+   "epoch": 8,
+   "train_loss": 0.6509458097258015,
+   "val_macro_f1": 0.2630247502688165,
+   "val_accuracy": 0.2912
+  }
+ ],
+ "test": {
+  "accuracy": 0.39724303609220385,
+  "macro_f1": 0.39528216174735303,
+  "per_class": {
+   "lying down": {
+    "precision": 0.36589740523735503,
+    "recall": 0.5299618981641843,
+    "f1": 0.43290655726108795,
+    "support": 5774
+   },
+   "sitting": {
+    "precision": 0.24546065904505715,
+    "recall": 0.37817302711103434,
+    "f1": 0.2976959151770543,
+    "support": 5791
+   },
+   "standing in place": {
+    "precision": 0.26465201465201466,
+    "recall": 0.1501038781163435,
+    "f1": 0.1915598762704375,
+    "support": 5776
+   },
+   "standing and moving": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "support": 0
+   },
+   "walking": {
+    "precision": 0.46696252465483234,
+    "recall": 0.48079201218480283,
+    "f1": 0.4737763695489035,
+    "support": 5909
+   },
+   "running": {
+    "precision": 0.6211083437110835,
+    "recall": 0.3326663331665833,
+    "f1": 0.4332717993267456,
+    "support": 5997
+   },
+   "bicycling": {
+    "precision": 0.5748678802113917,
+    "recall": 0.5135513201608672,
+    "f1": 0.5424824528998893,
+    "support": 5719
+   }
+  },
+  "confusion": [
+   [
+    3060,
+    2174,
+    322,
+    0,
+    50,
+    156,
+    12
+   ],
+   [
+    2083,
+    2190,
+    570,
+    0,
+    540,
+    210,
+    198
+   ],
+   [
+    1874,
+    1219,
+    867,
+    0,
+    912,
+    151,
+    753
+   ],
+   [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   [
+    556,
+    464,
+    742,
+    0,
+    2841,
+    508,
+    798
+   ],
+   [
+    352,
+    2578,
+    134,
+    0,
+    527,
+    1995,
+    411
+   ],
+   [
+    438,
+    297,
+    641,
+    0,
+    1214,
+    192,
+    2937
+   ]
+  ],
+  "classes": [
+   "lying down",
+   "sitting",
+   "standing in place",
+   "standing and moving",
+   "walking",
+   "running",
+   "bicycling"
+  ],
+  "n": 34966
+ }
+}

@@ -24,3 +24,10 @@ Thumbs.db
 .vscode/
 .idea/
 making.md
+
+# HPC credentials / cluster scripts (never commit)
+cluster_*.sh
+hpc_*.sh
+*.env
+secrets.txt
+paramvidya_creds.txt

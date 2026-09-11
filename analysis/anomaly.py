@@ -49,7 +49,7 @@ from typing import Mapping, Optional, Sequence
 
 import numpy as np
 
-from signature import Signature, SignatureFlag
+from analysis.signature import Signature, SignatureFlag
 
 __all__ = [
     "AnomalyEvent",

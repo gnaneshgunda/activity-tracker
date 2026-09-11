@@ -54,7 +54,7 @@ from typing import Iterator, Optional, Sequence
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
 
-from ingest import IngestedExample, MinuteBurst, SensorBurst
+from data.ingest import IngestedExample, MinuteBurst, SensorBurst
 
 __all__ = [
     "PreprocessedSignal",

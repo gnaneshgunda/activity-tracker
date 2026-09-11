@@ -14,6 +14,7 @@ import torch
 from dataset import CHANNELS, N_CHANNELS, Normaliser, WindowSet, fit_normaliser
 from ingest import TARGET_CLASSES
 from lstm import (
+    AlphaAwareLSTMClassifier,
     LSTMClassifier,
     TrainConfig,
     evaluate,
@@ -21,6 +22,7 @@ from lstm import (
     make_scorer,
     save_checkpoint,
     train,
+    train_joint_alpha,
 )
 from preprocess import PreprocessedSignal
 from recognize import AxisTriple, Window, attach_probs
@@ -64,6 +66,52 @@ def test_model_accepts_variable_window_length() -> None:
     assert m(torch.randn(2, 25, N_CHANNELS)).shape == (2, K)
     assert m(torch.randn(2, 75, N_CHANNELS)).shape == (2, K)
 
+
+def test_dynamic_alpha_head_outputs_sample_wise_gates() -> None:
+    m = AlphaAwareLSTMClassifier()
+    logits, alpha = m(torch.randn(8, T, N_CHANNELS))
+    assert logits.shape == (8, K)
+    assert alpha.shape == (8,)
+    assert torch.all(alpha >= 0.0) and torch.all(alpha <= 1.0)
+
+
+def test_joint_alpha_training_runs() -> None:
+    tr, va = _synthetic(20, seed=0), _synthetic(10, seed=1)
+    norm = fit_normaliser(tr.X)
+    model, res = train_joint_alpha(tr, va, norm, TrainConfig(epochs=2, batch_size=32, hidden=16, layers=1))
+    assert hasattr(model, "alpha_head")
+    assert res.history
+    assert res.completed_epochs >= 1
+
+def test_alpha_checkpoint_roundtrip_and_resume(tmp_path) -> None:
+    tr, va = _synthetic(20, seed=0), _synthetic(10, seed=1)
+    norm = fit_normaliser(tr.X)
+    cfg = TrainConfig(epochs=2, batch_size=32, hidden=16, layers=1, seed=9)
+    model, res = train_joint_alpha(tr, va, norm, cfg)
+
+    p = tmp_path / "alpha_ckpt.pt"
+    save_checkpoint(p, model, norm, res)
+    back, back_norm, meta = load_checkpoint(p)
+
+    x = torch.randn(4, T, N_CHANNELS)
+    model.eval()
+    with torch.no_grad():
+        logits, alpha = model(x)
+        back_logits, back_alpha = back(x)
+        assert torch.allclose(logits, back_logits, atol=1e-6)
+        assert torch.allclose(alpha, back_alpha, atol=1e-6)
+    assert np.allclose(norm.mean, back_norm.mean)
+    assert meta["absent_classes"] == ["standing and moving"]
+
+    resumed_model, resumed_res = train_joint_alpha(
+        tr, va, norm,
+        TrainConfig(epochs=3, batch_size=32, hidden=16, layers=1, seed=9),
+        model=model,
+        start_epoch=meta["completed_epochs"],
+    )
+    assert resumed_model is not None
+    assert resumed_res.completed_epochs == 3
+    assert resumed_res.history
 
 # --------------------------------------------------------------- metrics
 
@@ -174,6 +222,28 @@ def test_checkpoint_roundtrip_preserves_predictions(tmp_path) -> None:
         assert torch.allclose(model(x), back(x), atol=1e-6)
     assert np.allclose(norm.mean, back_norm.mean)
     assert meta["absent_classes"] == ["standing and moving"]
+
+
+def test_fine_tune_resume_from_checkpoint(tmp_path) -> None:
+    tr, va = _synthetic(20, seed=0), _synthetic(10, seed=1)
+    norm = fit_normaliser(tr.X)
+    cfg = TrainConfig(epochs=2, batch_size=32, hidden=16, layers=1, seed=7)
+    base_model, base_res = train(tr, va, norm, cfg)
+
+    ckpt = tmp_path / "resume.pt"
+    save_checkpoint(ckpt, base_model, norm, base_res)
+    _, _, meta = load_checkpoint(ckpt)
+
+    resumed_model, resumed_res = train(
+        tr, va, norm,
+        TrainConfig(epochs=3, batch_size=32, hidden=16, layers=1, seed=7),
+        model=base_model,
+        start_epoch=meta["completed_epochs"],
+    )
+
+    assert resumed_res.completed_epochs == 3
+    assert resumed_model is not None
+    assert resumed_res.history
 
 
 # ------------------------------------------------------- scorer adapter

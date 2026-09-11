@@ -37,7 +37,7 @@ from typing import Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 
-from ingest import TARGET_CLASSES
+from data.ingest import TARGET_CLASSES, PhonePlacement
 
 __all__ = [
     "Features",
@@ -60,9 +60,21 @@ class Features:
     gyro_rms: float
     cadence_bpm: float
     periodicity: float
-    #: False when the burst had no usable gyroscope; rules that depend on
-    #: rotation are then skipped rather than fed a fabricated zero.
     has_gyro: bool = True
+    phone_placement: str = PhonePlacement.UNKNOWN
+    #: Mean jerk magnitude (g/s). High values indicate foot-strike impacts.
+    jerk_mean: float = 0.0
+    #: FFT dominant frequency (Hz). More robust than autocorrelation cadence.
+    dominant_freq_hz: float = 0.0
+    #: Axis-resolved gyro RMS (rad/s). Separates pendulum swing from cycling.
+    gyro_x_rms: float = 0.0
+    gyro_y_rms: float = 0.0
+    gyro_z_rms: float = 0.0
+
+    @property
+    def tilt_reliable(self) -> bool:
+        """False when phone placement makes tilt uninformative for posture."""
+        return self.phone_placement not in (PhonePlacement.BAG, PhonePlacement.TABLE)
 
     @property
     def rotation_ratio(self) -> float:
@@ -74,16 +86,20 @@ class Features:
 class Thresholds:
     """Fitted constants. Defaults are calibrated for this pipeline's units."""
 
-    static_sma: float = 0.03          # g, below this the body is not translating
-    static_gyro: float = 0.30         # rad/s
-    lie_tilt_lo: float = 20.0         # deg, tilt below this = phone flat
-    lie_tilt_hi: float = 160.0        # deg, tilt above this = phone flat inverted
-    stand_tilt: float = 70.0          # deg, above this the phone is upright
-    run_sma: float = 0.45             # g
-    bike_rotation_ratio: float = 2.0  # gyro_rms / sma
-    walk_cadence_lo: float = 80.0     # bpm
-    run_cadence: float = 135.0        # bpm
-    periodic: float = 0.15            # normalised autocorrelation
+    static_sma: float = 0.03
+    static_gyro: float = 0.30
+    lie_tilt_lo: float = 20.0
+    lie_tilt_hi: float = 160.0
+    stand_tilt: float = 70.0
+    run_sma: float = 0.45
+    bike_rotation_ratio: float = 2.0
+    walk_cadence_lo: float = 80.0
+    run_cadence: float = 135.0
+    periodic: float = 0.15
+    #: Jerk threshold (g/s) separating walking from running foot-strikes.
+    run_jerk: float = 8.0
+    #: FFT dominant frequency (Hz) floor for rhythmic locomotion.
+    freq_periodic_lo: float = 0.5
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -133,6 +149,8 @@ _DEFAULT_GRID: dict[str, Sequence[float]] = {
     "walk_cadence_lo": [60, 70, 80, 100],
     "run_cadence": [110, 125, 135, 145],
     "periodic": [0.05, 0.1, 0.15, 0.25, 0.4],
+    "run_jerk": [4.0, 6.0, 8.0, 10.0, 14.0],
+    "freq_periodic_lo": [0.3, 0.5, 0.8, 1.0],
 }
 
 
@@ -164,36 +182,38 @@ def label_activity(f: Features, th: Optional[Thresholds] = None) -> str:
     """Hard label. Structure is hand-written physics; constants are fitted."""
     th = th or Thresholds()
 
-    # 1. Static vs moving. SMA is the body's own linear acceleration, so it is
-    #    the cleanest physical separator available (81% alone on held-out data).
-    #    Gyro joins the test only when it exists.
     still = f.sma < th.static_sma and (not f.has_gyro or f.gyro_rms < th.static_gyro)
     if still:
         return _posture(f, th)
 
-    # 2. Moving. Running is distinguished by intensity, cycling by rotation per
-    #    unit translation (pedalling spins the leg without displacing the torso).
-    if f.periodicity > th.periodic or f.cadence_bpm > 0:
+    # Use FFT dominant frequency as a more robust periodicity gate when available.
+    is_periodic = (
+        f.periodicity > th.periodic
+        or f.cadence_bpm > 0
+        or f.dominant_freq_hz >= th.freq_periodic_lo
+    )
+    if is_periodic:
         if f.has_gyro and f.rotation_ratio > th.bike_rotation_ratio:
             return "bicycling"
-        if f.sma > th.run_sma or f.cadence_bpm >= th.run_cadence:
+        # Jerk distinguishes running foot-strikes from walking even when SMA overlaps.
+        if f.sma > th.run_sma or f.cadence_bpm >= th.run_cadence or f.jerk_mean > th.run_jerk:
             return "running"
-        if f.cadence_bpm >= th.walk_cadence_lo:
+        if f.cadence_bpm >= th.walk_cadence_lo or f.dominant_freq_hz >= th.freq_periodic_lo:
             return "walking"
 
-    # 3. Moving but not rhythmic: upright and shifting about rather than
-    #    travelling. This is the only branch that can produce this class.
     return "standing and moving"
 
 
 def _posture(f: Features, th: Thresholds) -> str:
     """Static posture from tilt.
 
-    Caveat, measured on this dataset: tilt separates posture only when the
-    phone tracks the body. With the phone in a pocket, sitting sits near 38 deg
-    and standing near 85 deg. With the phone on a table it carries almost no
-    posture information, which bounds how well any tilt rule can do.
+    When phone placement is BAG or TABLE, tilt carries no posture information
+    so we fall back to SMA-only: the body is still, but we cannot distinguish
+    lying/sitting/standing. We return "sitting" as the least-wrong default
+    rather than inventing a posture from noise.
     """
+    if not f.tilt_reliable:
+        return "sitting"  # honest fallback: still but posture unknown
     if f.tilt_deg < th.lie_tilt_lo or f.tilt_deg > th.lie_tilt_hi:
         return "lying down"
     return "standing in place" if f.tilt_deg > th.stand_tilt else "sitting"
@@ -224,13 +244,20 @@ def predict_proba(
     moving = -still
 
     idx = {c: i for i, c in enumerate(classes)}
-    scores[idx["lying down"]] = still + margin(
-        abs(_wrap_tilt(f.tilt_deg)), 90 - th.lie_tilt_lo, 25.0
+    scores[idx["lying down"]] = still + (
+        margin(abs(_wrap_tilt(f.tilt_deg)), 90 - th.lie_tilt_lo, 25.0)
+        if f.tilt_reliable else 0.0
     )
-    scores[idx["standing in place"]] = still + margin(f.tilt_deg, th.stand_tilt, 25.0)
-    scores[idx["sitting"]] = still + (1.0 - abs(margin(f.tilt_deg, th.stand_tilt, 25.0)))
-    scores[idx["walking"]] = moving + margin(f.cadence_bpm, th.walk_cadence_lo, 30.0)
-    scores[idx["running"]] = moving + margin(f.sma, th.run_sma, 0.3)
+    scores[idx["standing in place"]] = still + (
+        margin(f.tilt_deg, th.stand_tilt, 25.0) if f.tilt_reliable else 0.0
+    )
+    scores[idx["sitting"]] = still + (
+        (1.0 - abs(margin(f.tilt_deg, th.stand_tilt, 25.0))) if f.tilt_reliable else 0.5
+    )
+    scores[idx["walking"]] = moving + margin(f.cadence_bpm, th.walk_cadence_lo, 30.0) + \
+        margin(f.dominant_freq_hz, th.freq_periodic_lo, 0.5)
+    scores[idx["running"]] = moving + margin(f.sma, th.run_sma, 0.3) + \
+        margin(f.jerk_mean, th.run_jerk, 3.0)
     scores[idx["bicycling"]] = moving + (
         margin(f.rotation_ratio, th.bike_rotation_ratio, 2.0) if f.has_gyro else -1.0
     )

@@ -61,22 +61,22 @@ st.set_page_config(
 
 
 def _import_store():
-    from store import ActivityStore
+    from analysis.store import ActivityStore
     return ActivityStore
 
 
 def _import_rollup():
-    from rollup import compute_daily_rollup, DailyRollup
+    from analysis.rollup import DailyRollup, compute_daily_rollup
     return compute_daily_rollup, DailyRollup
 
 
 def _import_energy():
-    from energy import estimate_energy_from_rollup, DEFAULT_WEIGHT_KG
+    from analysis.energy import DEFAULT_WEIGHT_KG, estimate_energy_from_rollup
     return estimate_energy_from_rollup, DEFAULT_WEIGHT_KG
 
 
 def _import_router():
-    from router import route
+    from analysis.router import route
     return route
 
 
@@ -285,7 +285,7 @@ def _query_by_uuid(store, uuid: str, limit: int):
         """,
         (uuid, limit),
     )
-    from store import _row_to_timeline
+    from analysis.store import _row_to_timeline
     return [_row_to_timeline(r) for r in cur.fetchall()]
 
 
@@ -302,7 +302,7 @@ def _query_all(store, limit: int):
         """,
         (limit,),
     )
-    from store import _row_to_timeline
+    from analysis.store import _row_to_timeline
     return [_row_to_timeline(r) for r in cur.fetchall()]
 
 

@@ -51,9 +51,9 @@ from typing import Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 
-from ingest import TARGET_CLASSES
-from preprocess import PreprocessedSignal
-from recognize import Window, WindowFlag, normalized_entropy
+from data.ingest import TARGET_CLASSES
+from data.preprocess import PreprocessedSignal
+from pipeline.recognize import Window, WindowFlag, normalized_entropy
 
 __all__ = [
     "Segment",

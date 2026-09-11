@@ -35,17 +35,20 @@ from typing import Iterable, Mapping, Optional, Sequence
 
 import numpy as np
 
-from ingest import (
+from data.ingest import (
     TARGET_CLASSES,
     MinuteBurst,
+    PhonePlacement,
+    PHONE_PLACEMENT_COLUMNS,
     burst_paths,
     iter_label_rows,
     labels_path,
     load_burst_file,
+    read_phone_placement,
     resolve_label,
 )
-from preprocess import preprocess_burst
-from recognize import WINDOW_S, extract_windows
+from data.preprocess import preprocess_burst
+from pipeline.recognize import WINDOW_S, cadence_from_vertical, extract_windows, vertical_component, dominant_freq_hz, acc_gyro_phase
 
 __all__ = [
     "CHANNELS",
@@ -63,14 +66,38 @@ __all__ = [
 
 log = logging.getLogger(__name__)
 
-#: Input channels, in order. ``gyro_present`` is a constant 0/1 flag: part of
-#: the release has no gyroscope, and zero-filling those channels without saying
-#: so would be indistinguishable from a perfectly still gyroscope.
+LABELS = "ExtraSensory.per_uuid_features_labels"
+LABELS_ROOT_SENTINEL = Path(LABELS)  # default labels root, relative to cwd
+
+#: Input channels, in order.
+#: Raw sensor channels (10) + derived physics features (12) + phone placement flags (4).
+#: Derived: tilt_deg, sma, cadence_hz, periodicity, vertical_std, rotation_ratio,
+#:          jerk_mean, gyro_x_rms, gyro_y_rms, gyro_z_rms, dominant_freq_hz, acc_gyro_phase.
+#: Placement: phone_pocket, phone_hand, phone_bag, phone_table (0/1 per timestep).
 CHANNELS: tuple[str, ...] = (
+    # raw sensor
     "body_acc_x", "body_acc_y", "body_acc_z",
     "gravity_x", "gravity_y", "gravity_z",
     "gyro_x", "gyro_y", "gyro_z",
     "gyro_present",
+    # derived physics features (broadcast as constant per window)
+    "tilt_deg",
+    "sma",
+    "cadence_hz",
+    "periodicity",
+    "vertical_std",
+    "rotation_ratio",
+    "jerk_mean",
+    "gyro_x_rms",
+    "gyro_y_rms",
+    "gyro_z_rms",
+    "dominant_freq_hz",
+    "acc_gyro_phase",
+    # phone placement flags (broadcast as constant per window)
+    "phone_pocket",
+    "phone_hand",
+    "phone_bag",
+    "phone_table",
 )
 
 N_CHANNELS = len(CHANNELS)
@@ -305,8 +332,34 @@ def sample_minutes(
 # --------------------------------------------------------------------------
 
 
+def _placement_flags(placement: str) -> tuple[float, float, float, float]:
+    """Return (pocket, hand, bag, table) one-hot from a PhonePlacement value."""
+    return (
+        1.0 if placement == PhonePlacement.POCKET else 0.0,
+        1.0 if placement == PhonePlacement.HAND   else 0.0,
+        1.0 if placement == PhonePlacement.BAG    else 0.0,
+        1.0 if placement == PhonePlacement.TABLE  else 0.0,
+    )
+
+
+# Per-class window stride: minority classes get high overlap to produce more
+# windows per burst without generating fake signals.
+# majority (lying/sitting): 0% overlap = 2.0s stride
+# moderate (walking/standing): 50% overlap = 1.0s stride
+# minority (running/bicycling/standing-and-moving): 90% overlap = 0.2s stride
+_CLASS_STRIDE_S: dict[int, float] = {
+    TARGET_CLASSES.index("lying down"):          2.0,
+    TARGET_CLASSES.index("sitting"):             2.0,
+    TARGET_CLASSES.index("standing in place"):   1.0,
+    TARGET_CLASSES.index("standing and moving"): 0.2,
+    TARGET_CLASSES.index("walking"):             1.0,
+    TARGET_CLASSES.index("running"):             0.2,
+    TARGET_CLASSES.index("bicycling"):           0.2,
+}
+
+
 def _minute_windows(args) -> Optional[tuple[np.ndarray, int, str, int]]:
-    uuid, ts, label_index, raw_root, window_s = args
+    uuid, ts, label_index, raw_root, window_s, placement = args
     acc_p, gyro_p = burst_paths(raw_root, uuid, ts)
     if not acc_p.is_file():
         return None
@@ -320,8 +373,11 @@ def _minute_windows(args) -> Optional[tuple[np.ndarray, int, str, int]]:
     if sig.n_samples == 0 or "unit_ambiguous" in sig.flags:
         return None
 
-    wins = extract_windows(sig, window_s=window_s)
+    wins = extract_windows(sig, window_s=window_s,
+                            overlap=1.0 - _CLASS_STRIDE_S[label_index] / window_s)
     n_win = int(round(window_s * sig.fs))
+    pl_flags = np.array(_placement_flags(placement), dtype=np.float32)  # (4,)
+    vertical_all = vertical_component(sig.body_acc, sig.gravity)
     keep: list[np.ndarray] = []
     for w in wins:
         if not w.is_usable:
@@ -331,13 +387,11 @@ def _minute_windows(args) -> Optional[tuple[np.ndarray, int, str, int]]:
             continue
         body = sig.body_acc[i : i + n_win]
         grav = sig.gravity[i : i + n_win]
-        # The accelerometer and gyroscope are sampled on different clocks: both
-        # files hold 800 samples, but the gyro typically spans ~3s less, so the
-        # tail of the accelerometer grid has no gyro coverage. Dropping those
-        # windows would discard ~18% of every burst -- always the same part of
-        # it, which is a systematic bias, not random loss. Instead the gyro
-        # channels are zeroed and `gyro_present` is lowered, which is precisely
-        # what that flag exists to signal.
+        vert = vertical_all[i : i + n_win]
+
+        if not np.all(np.isfinite(body)) or not np.all(np.isfinite(grav)):
+            continue
+
         if sig.gyro_raw is None:
             gy = np.zeros((n_win, 3), dtype=np.float64)
             present = np.zeros((n_win, 1), dtype=np.float64)
@@ -347,12 +401,47 @@ def _minute_windows(args) -> Optional[tuple[np.ndarray, int, str, int]]:
             present = ok.astype(np.float64)[:, None]
             gy = np.where(ok[:, None], gy, 0.0)
 
-        # Accelerometer-derived channels must still be complete: they are the
-        # signal itself, not an optional extra.
-        if not np.all(np.isfinite(body)) or not np.all(np.isfinite(grav)):
-            continue
+        # --- derived physics features (scalar per window, broadcast) ---
+        sma = float(np.nanmean(np.linalg.norm(body, axis=1)))
+        g_mean = np.nanmean(grav, axis=0)
+        g_norm = float(np.linalg.norm(g_mean))
+        if g_norm > 1e-9:
+            cos = float(np.dot(g_mean / g_norm, np.array([0.0, 0.0, -1.0])))
+            tilt_deg = float(np.degrees(np.arccos(np.clip(cos, -1.0, 1.0))))
+        else:
+            tilt_deg = 90.0
+        cadence_hz, _, _ = cadence_from_vertical(vert, fs=sig.fs, sma=sma)
+        cadence_hz = 0.0 if not np.isfinite(cadence_hz) else cadence_hz
+        fin_vert = vert[np.isfinite(vert)]
+        periodicity = float(np.std(fin_vert)) if fin_vert.size > 1 else 0.0
+        vertical_std = periodicity
+        gyro_rms = float(np.sqrt(np.nanmean(np.square(gy)))) if sig.gyro_raw is not None else 0.0
+        rotation_ratio = gyro_rms / (sma + 1e-6)
 
-        block = np.concatenate([body, grav, gy, present], axis=1)
+        # jerk: mean magnitude of frame-to-frame acceleration derivative
+        diff_body = np.diff(body, axis=0) * sig.fs  # (T-1, 3) in g/s
+        jerk_mean = float(np.nanmean(np.linalg.norm(diff_body, axis=1))) if diff_body.size > 0 else 0.0
+
+        # axis-resolved gyro RMS
+        gyro_x_rms = float(np.sqrt(np.nanmean(np.square(gy[:, 0])))) if sig.gyro_raw is not None else 0.0
+        gyro_y_rms = float(np.sqrt(np.nanmean(np.square(gy[:, 1])))) if sig.gyro_raw is not None else 0.0
+        gyro_z_rms = float(np.sqrt(np.nanmean(np.square(gy[:, 2])))) if sig.gyro_raw is not None else 0.0
+
+        # FFT dominant frequency and acc-gyro phase alignment
+        dom_freq = dominant_freq_hz(vert, fs=sig.fs)
+        phase = acc_gyro_phase(vert, gy[:, 1], fs=sig.fs) if sig.gyro_raw is not None else 0.0
+
+        derived = np.array(
+            [tilt_deg, sma, cadence_hz, periodicity, vertical_std, rotation_ratio,
+             jerk_mean, gyro_x_rms, gyro_y_rms, gyro_z_rms, dom_freq, phase],
+            dtype=np.float32,
+        )  # (12,)
+
+        # broadcast scalars across timesteps
+        derived_block = np.tile(derived, (n_win, 1))       # (T, 6)
+        placement_block = np.tile(pl_flags, (n_win, 1))    # (T, 4)
+
+        block = np.concatenate([body, grav, gy, present, derived_block, placement_block], axis=1)
         keep.append(block.astype(np.float32))
 
     if not keep:
@@ -364,6 +453,7 @@ def build_windows(
     minutes: Sequence[LabeledMinute],
     raw_root: os.PathLike | str,
     *,
+    labels_root: os.PathLike | str = LABELS,
     window_s: float = WINDOW_S,
     workers: Optional[int] = None,
 ) -> WindowSet:
@@ -373,7 +463,26 @@ def build_windows(
     gap-filled are skipped -- nothing is imputed to keep a row.
     """
     workers = workers or min(16, (os.cpu_count() or 4))
-    args = [(m.uuid, m.timestamp, m.label_index, str(raw_root), window_s) for m in minutes]
+    labels_root_path = Path(labels_root)
+    # read placement from label file for each minute
+    placement_map: dict[tuple[str, int], str] = {}
+    for m in minutes:
+        lpath = labels_path(labels_root_path, m.uuid)
+        if lpath.is_file():
+            for row in iter_label_rows(lpath):
+                try:
+                    rts = int(float(row.get("timestamp", "")))
+                except (TypeError, ValueError):
+                    continue
+                if rts == m.timestamp:
+                    placement_map[(m.uuid, m.timestamp)] = read_phone_placement(row)
+                    break
+
+    args = [
+        (m.uuid, m.timestamp, m.label_index, str(raw_root), window_s,
+         placement_map.get((m.uuid, m.timestamp), PhonePlacement.UNKNOWN))
+        for m in minutes
+    ]
 
     Xs: list[np.ndarray] = []
     ys: list[np.ndarray] = []
@@ -417,7 +526,10 @@ SEQ_CHANNELS: tuple[str, ...] = CHANNELS + ("sample_valid",)
 #: Channels that are 0/1 indicators, not measurements. They must survive
 #: normalisation unchanged: downstream code tests them with ``> 0.5``, and
 #: standardising a mostly-1 flag maps 1 to ~0.25, silently inverting the test.
-FLAG_CHANNELS: tuple[str, ...] = ("gyro_present", "sample_valid")
+FLAG_CHANNELS: tuple[str, ...] = (
+    "gyro_present", "sample_valid",
+    "phone_pocket", "phone_hand", "phone_bag", "phone_table",
+)
 
 
 def fit_normaliser(X: np.ndarray, *, eps: float = 1e-6) -> Normaliser:

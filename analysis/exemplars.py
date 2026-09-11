@@ -69,7 +69,7 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
-from ingest import TARGET_CLASSES
+from data.ingest import TARGET_CLASSES
 
 __all__ = [
     "Exemplar",
@@ -77,6 +77,7 @@ __all__ = [
     "nearest_exemplars",
     "build_explain_prompt",
     "explain",
+    "explain_auto",
 ]
 
 log = logging.getLogger(__name__)
@@ -913,3 +914,36 @@ def explain(
 def _null_slm(prompt: str) -> str:  # pragma: no cover
     """No-op SLM stub that echoes the prompt length — for tests and dry runs."""
     return f"[null_slm: received {len(prompt)}-char prompt; no model configured]"
+
+
+# ---------------------------------------------------------------------------
+# Convenience: explain with the module-level SLM singleton
+# ---------------------------------------------------------------------------
+
+
+def explain_auto(
+    query_signature,
+    *,
+    k: int = 3,
+    metric: str = "cosine",
+    anomaly_event=None,
+) -> str:
+    """Retrieve exemplars and explain using the shared SLM singleton.
+
+    This is the one-call entry point for B8/B9 integration::
+
+        from analysis.exemplars import explain_auto
+        text = explain_auto(segment_signature)
+
+    The SLM is loaded lazily on first call.  Falls back to the null stub
+    when the model file is not present, so the pipeline never hard-crashes
+    on a missing weight file.
+    """
+    exemplars = nearest_exemplars(query_signature, k=k, metric=metric)
+    try:
+        from models.slm import get_slm
+        slm = get_slm().for_narration()
+    except Exception as exc:
+        log.warning("SLM unavailable for narration (%s); using null stub", exc)
+        slm = _null_slm
+    return explain(query_signature, exemplars, slm, anomaly_event=anomaly_event)

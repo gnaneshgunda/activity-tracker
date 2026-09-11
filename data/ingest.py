@@ -59,12 +59,15 @@ __all__ = [
     "LabelResolution",
     "TARGET_CLASSES",
     "LABEL_COLUMNS",
+    "PHONE_PLACEMENT_COLUMNS",
+    "PhonePlacement",
     "StandingSplit",
     "burst_paths",
     "load_burst_file",
     "load_minute_burst",
     "iter_label_rows",
     "resolve_label",
+    "read_phone_placement",
     "ingest_user",
 ]
 
@@ -112,6 +115,31 @@ _STAND_IN_PLACE = "standing in place"
 _STAND_MOVING = "standing and moving"
 
 TIMESTAMP_COLUMN = "timestamp"
+
+
+class PhonePlacement(str):
+    """Where the phone was during the minute, as reported by the user."""
+    POCKET = "pocket"
+    HAND = "hand"
+    BAG = "bag"
+    TABLE = "table"
+    UNKNOWN = "unknown"
+
+
+#: ExtraSensory columns that encode phone placement.
+PHONE_PLACEMENT_COLUMNS: tuple[str, ...] = (
+    "label:PHONE_IN_POCKET",
+    "label:PHONE_IN_HAND",
+    "label:PHONE_IN_BAG",
+    "label:PHONE_ON_TABLE",
+)
+
+_PLACEMENT_MAP: dict[str, str] = {
+    "label:PHONE_IN_POCKET": PhonePlacement.POCKET,
+    "label:PHONE_IN_HAND":   PhonePlacement.HAND,
+    "label:PHONE_IN_BAG":    PhonePlacement.BAG,
+    "label:PHONE_ON_TABLE":  PhonePlacement.TABLE,
+}
 
 #: Nominal burst geometry, per Vaizman, Ellis & Lanckriet (2017).
 NOMINAL_RATE_HZ = 40.0
@@ -240,6 +268,9 @@ class IngestedExample:
         ``multi_label`` cases.
     missing_labels:
         Target classes whose source column was missing (NaN) for this minute.
+    phone_placement:
+        One of :class:`PhonePlacement` values. ``UNKNOWN`` when the user did
+        not report placement or multiple placements were active.
     """
 
     uuid: str
@@ -251,6 +282,7 @@ class IngestedExample:
     flags: tuple[str, ...] = ()
     positive_labels: tuple[str, ...] = ()
     missing_labels: tuple[str, ...] = ()
+    phone_placement: str = PhonePlacement.UNKNOWN
 
     @property
     def is_clean(self) -> bool:
@@ -497,6 +529,21 @@ def _resolve_standing(
     raise ValueError(f"unknown standing_split: {standing_split!r}")
 
 
+def read_phone_placement(row: Mapping[str, str]) -> str:
+    """Read phone placement from one label-file row.
+
+    Returns one of :class:`PhonePlacement`. When zero or multiple placement
+    columns are positive the result is ``UNKNOWN`` -- we do not invent a
+    placement that was not reported.
+    """
+    active = [
+        placement
+        for col, placement in _PLACEMENT_MAP.items()
+        if _parse_label_cell(row.get(col)) == 1.0
+    ]
+    return active[0] if len(active) == 1 else PhonePlacement.UNKNOWN
+
+
 def labels_path(labels_root: os.PathLike | str, uuid: str) -> Path:
     """Locate a user's label file.
 
@@ -619,6 +666,7 @@ def ingest_user(
                 flags=tuple(res.flags) + burst_flags,
                 positive_labels=res.positives,
                 missing_labels=res.missing,
+                phone_placement=read_phone_placement(row),
             )
         )
         if limit is not None and len(examples) >= limit:

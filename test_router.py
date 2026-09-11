@@ -33,7 +33,6 @@ from router import (
     RouterConfig,
     SLMNotConfigured,
     _Rule,
-    _count_bouts,       # sanity: not imported (rollup private)
     build_router,
     route,
 )
