@@ -71,6 +71,14 @@ class Features:
     gyro_x_rms: float = 0.0
     gyro_y_rms: float = 0.0
     gyro_z_rms: float = 0.0
+    #: Std of the most-active acceleration axis (g). Placement-robust proxy
+    #: for vertical body_acc variability. Separates lying from walking, and
+    #: "barely above still" from "clearly moving". Defaults to 0 when not
+    #: available from the data source.
+    vertical_std: float = 0.0
+    #: Zero-crossing rate of the acc magnitude (Hz). Walking ~0.9–1.8 Hz;
+    #: cycling ~0.5–1.2 Hz. Defaults to 0 when not available.
+    zcr: float = 0.0
 
     @property
     def tilt_reliable(self) -> bool:
@@ -81,6 +89,45 @@ class Features:
     def rotation_ratio(self) -> float:
         """Rotation per unit linear motion. Separates cycling from walking."""
         return self.gyro_rms / (self.sma + 1e-6)
+
+    @property
+    def gyro_dominance(self) -> float:
+        """Max single-axis RMS / vector magnitude of axis RMS values.
+
+        Near 1.0 means one axis carries nearly all the rotation energy —
+        characteristic of cycling (wheel spin locks energy into one axis).
+        Near 0.577 (= 1/sqrt(3)) means energy is uniform across all three axes
+        — characteristic of walking / running foot-strike chaos.
+
+        Placement-invariant: measures *concentration*, not *which* axis.
+        """
+        total = math.sqrt(
+            self.gyro_x_rms ** 2 + self.gyro_y_rms ** 2 + self.gyro_z_rms ** 2
+        )
+        if total < 1e-9:
+            return 1.0 / math.sqrt(3)  # no signal — report uniform
+        return max(self.gyro_x_rms, self.gyro_y_rms, self.gyro_z_rms) / total
+
+    @property
+    def gyro_entropy(self) -> float:
+        """Shannon entropy of gyro energy distribution across the three axes.
+
+        Low entropy (→ 0) means rotation is concentrated in one axis (cycling).
+        High entropy (→ log 3 ≈ 1.099) means rotation is spread uniformly.
+
+        Fully placement-invariant: only the relative distribution matters, not
+        which axis is which. Falls back to log(3) when gyro is absent.
+        """
+        ax2 = [
+            self.gyro_x_rms ** 2,
+            self.gyro_y_rms ** 2,
+            self.gyro_z_rms ** 2,
+        ]
+        total = sum(ax2)
+        if total < 1e-12:
+            return math.log(3)  # no gyro signal → maximally uncertain
+        p = [a / total for a in ax2]
+        return float(-sum(pi * math.log(pi + 1e-12) for pi in p))
 
 
 @dataclass
@@ -101,6 +148,23 @@ class Thresholds:
     run_jerk: float = 8.0
     #: FFT dominant frequency (Hz) floor for rhythmic locomotion.
     freq_periodic_lo: float = 0.5
+    # --- Posture fallback (tilt_reliable=False, phone in bag/table) ---
+    #: SMA ceiling for "lying down" when tilt is uninformative.
+    lie_sma_hi: float = 0.008
+    #: SMA ceiling for "sitting" when tilt is uninformative.
+    #: Above this threshold → "standing in place".
+    sit_sma_hi: float = 0.030
+    # --- Non-periodic moving catch-all ---
+    #: vertical_std floor above which the sample is "standing and moving"
+    #: rather than "standing in place". Only used when vertical_std > 0.
+    vert_std_moving: float = 0.05
+    # --- Placement-robust gyro discriminators (cycling vs walking) ---
+    #: gyro_dominance floor for a cycling signal. Cycling wheel spin
+    #: concentrates rotation energy in one axis; walking spreads it.
+    bike_gyro_dominance: float = 0.75
+    #: gyro_entropy ceiling for cycling. Low entropy = one-axis = cycling.
+    #: High entropy = spread across axes = walking / running.
+    bike_gyro_entropy_hi: float = 0.90
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -111,47 +175,80 @@ class Thresholds:
         *,
         grid: Optional[Mapping[str, Sequence[float]]] = None,
         seed: int = 0,
+        n_restarts: int = 2,
     ) -> "Thresholds":
         """Fit constants by maximising macro-F1 on labelled training data.
 
-        Coordinate ascent over one parameter at a time: the branch structure is
-        shallow, so this converges in a couple of passes and is far cheaper than
-        a full product grid.
+        Coordinate ascent over one parameter at a time (6 passes), followed
+        by ``n_restarts`` random restarts to escape local optima. The branch
+        structure is shallow so this is far cheaper than a full product grid.
         """
         grid = dict(grid or _DEFAULT_GRID)
-        th = Thresholds()
-        best = _macro_f1(rows, th)
-        for _ in range(3):
-            improved = False
-            for name, values in grid.items():
-                cur = getattr(th, name)
-                for v in values:
-                    if v == cur:
+
+        def _ascent(start: "Thresholds") -> tuple:
+            th = start
+            best = _macro_f1(rows, th)
+            for _ in range(6):  # was 3 — more passes catches threshold interactions
+                improved = False
+                for name, values in grid.items():
+                    if not hasattr(th, name):
                         continue
-                    setattr(th, name, v)
-                    score = _macro_f1(rows, th)
-                    if score > best + 1e-6:
-                        best, cur, improved = score, v, True
-                    setattr(th, name, cur)
-            if not improved:
-                break
-        log.info("fitted thresholds, train macro-F1 %.4f", best)
-        return th
+                    cur = getattr(th, name)
+                    for v in values:
+                        if v == cur:
+                            continue
+                        setattr(th, name, v)
+                        score = _macro_f1(rows, th)
+                        if score > best + 1e-6:
+                            best, cur, improved = score, v, True
+                        setattr(th, name, cur)
+                if not improved:
+                    break
+            return th, best
+
+        best_th, best_score = _ascent(Thresholds())
+
+        rng = np.random.default_rng(seed)
+        for restart in range(n_restarts):
+            th_r = Thresholds()
+            for name, values in grid.items():
+                if hasattr(th_r, name):
+                    idx_r = int(rng.integers(len(values)))
+                    setattr(th_r, name, values[idx_r])
+            th_r, score_r = _ascent(th_r)
+            if score_r > best_score + 1e-6:
+                best_th, best_score = th_r, score_r
+                log.debug("restart %d improved macro-F1 to %.4f", restart, best_score)
+
+        log.info("fitted thresholds, train macro-F1 %.4f", best_score)
+        return best_th
 
 
 _DEFAULT_GRID: dict[str, Sequence[float]] = {
-    "static_sma": [0.005, 0.01, 0.02, 0.03, 0.05, 0.08, 0.12],
-    "static_gyro": [0.05, 0.1, 0.2, 0.3, 0.5, 1.0],
-    "lie_tilt_lo": [5, 10, 15, 20, 30, 40],
-    "lie_tilt_hi": [140, 150, 160, 170, 175],
-    "stand_tilt": [40, 50, 60, 70, 80, 90],
-    "run_sma": [0.2, 0.3, 0.45, 0.6, 0.9],
-    "bike_rotation_ratio": [0.5, 1.0, 2.0, 3.5, 6.0],
-    "walk_cadence_lo": [60, 70, 80, 100],
-    "run_cadence": [110, 125, 135, 145],
-    "periodic": [0.05, 0.1, 0.15, 0.25, 0.4],
-    "run_jerk": [4.0, 6.0, 8.0, 10.0, 14.0],
-    "freq_periodic_lo": [0.3, 0.5, 0.8, 1.0],
+    # Motion / stillness — finer range to avoid wrong local optima
+    "static_sma":        [0.003, 0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.07],
+    "static_gyro":       [0.05, 0.1, 0.2, 0.3, 0.5, 1.0],
+    # Posture (tilt-reliable path)
+    "lie_tilt_lo":       [5, 10, 15, 20, 30, 40],
+    "lie_tilt_hi":       [140, 150, 160, 170, 175],
+    "stand_tilt":        [40, 50, 60, 70, 80, 90],
+    # Posture fallback (tilt-unreliable, SMA-based)
+    "lie_sma_hi":        [0.003, 0.005, 0.008, 0.012, 0.018],
+    "sit_sma_hi":        [0.015, 0.025, 0.035, 0.050, 0.080],
+    # Non-periodic moving catch-all
+    "vert_std_moving":   [0.02, 0.04, 0.06, 0.10, 0.15],
+    # Locomotion thresholds — finer grid for run_sma
+    "run_sma":           [0.06, 0.08, 0.10, 0.14, 0.18, 0.22, 0.28, 0.35],
+    "run_jerk":          [3.0, 5.0, 7.0, 9.0, 12.0, 16.0],
+    "run_cadence":       [110, 125, 135, 145],
+    "walk_cadence_lo":   [55, 65, 75, 85, 95, 105],
+    "periodic":          [0.05, 0.1, 0.15, 0.25, 0.4],
+    "freq_periodic_lo":  [0.3, 0.5, 0.8, 1.0],
+    # Cycling vs walking — rotation-based (placement-robust)
+    "bike_rotation_ratio":  [0.5, 1.0, 2.0, 3.5, 6.0],
+    # Cycling vs walking — axis-concentration-based (placement-robust)
+    "bike_gyro_dominance":  [0.60, 0.68, 0.75, 0.82, 0.90],
+    "bike_gyro_entropy_hi": [0.70, 0.80, 0.90, 1.00, 1.05],
 }
 
 
@@ -213,19 +310,37 @@ def label_activity(
         if f.cadence_bpm >= th.walk_cadence_lo or f.dominant_freq_hz >= th.freq_periodic_lo:
             return "walking"
 
-    return "standing and moving"
+    # Non-periodic moving: distinguish from "standing in place" using vertical_std
+    # when available, or fall back to an SMA ratio gate.
+    # Note: "standing and moving" is absent from ExtraSensory training labels,
+    # so this branch should rarely fire in practice; most arrhythmic samples
+    # resolve to a real posture class via the still branch or to a locomotion
+    # class via the periodic branch.
+    if f.vertical_std > 0.0:
+        return "standing and moving" if f.vertical_std > th.vert_std_moving else "standing in place"
+    return "standing and moving" if f.sma > th.static_sma * 4 else "standing in place"
 
 
 def _posture(f: Features, th: Thresholds) -> str:
-    """Static posture from tilt.
+    """Static posture from tilt, with SMA-based fallback when tilt is unreliable.
 
-    When phone placement is BAG or TABLE, tilt carries no posture information
-    so we fall back to SMA-only: the body is still, but we cannot distinguish
-    lying/sitting/standing. We return "sitting" as the least-wrong default
-    rather than inventing a posture from noise.
+    When phone placement is BAG or TABLE, tilt carries no posture information.
+    Rather than always returning "sitting" (which was systematically wrong for
+    sleeping users), we use SMA magnitude as a coarse proxy:
+      - Very low SMA (< lie_sma_hi)  → likely lying down (sleeping, phone on
+        bedside table).
+      - Medium SMA  (< sit_sma_hi)   → sitting (desk work, small movements).
+      - Higher SMA                   → standing in place (more motion than
+        pure sitting, phone in bag while user walks slowly).
+    These thresholds are fitted alongside the tilt thresholds by
+    :meth:`Thresholds.fit`.
     """
     if not f.tilt_reliable:
-        return "sitting"  # honest fallback: still but posture unknown
+        if f.sma < th.lie_sma_hi:
+            return "lying down"
+        if f.sma < th.sit_sma_hi:
+            return "sitting"
+        return "standing in place"
     if f.tilt_deg < th.lie_tilt_lo or f.tilt_deg > th.lie_tilt_hi:
         return "lying down"
     return "standing in place" if f.tilt_deg > th.stand_tilt else "sitting"
@@ -279,12 +394,24 @@ def predict_proba(
     scores[idx["sitting"]] = still + (
         (1.0 - abs(margin(f.tilt_deg, th.stand_tilt, 25.0))) if f.tilt_reliable else 0.5
     )
-    scores[idx["walking"]] = moving + margin(f.cadence_bpm, th.walk_cadence_lo, 30.0) + \
-        margin(f.dominant_freq_hz, th.freq_periodic_lo, 0.5)
+    scores[idx["walking"]] = (
+        moving
+        + margin(f.cadence_bpm, th.walk_cadence_lo, 30.0)
+        + margin(f.dominant_freq_hz, th.freq_periodic_lo, 0.5)
+        # Placement-robust: high gyro entropy (spread across axes) favours walking.
+        # We reward entropy above the midpoint between zero and bike_gyro_entropy_hi.
+        + (margin(f.gyro_entropy, th.bike_gyro_entropy_hi * 0.6, 0.15) if f.has_gyro else 0.0)
+    )
     scores[idx["running"]] = moving + margin(f.sma, th.run_sma, 0.3) + \
         margin(f.jerk_mean, th.run_jerk, 3.0)
     scores[idx["bicycling"]] = moving + (
-        margin(f.rotation_ratio, th.bike_rotation_ratio, 2.0) if f.has_gyro else -1.0
+        # rotation_ratio: gyro per unit linear motion (placement-invariant).
+        margin(f.rotation_ratio, th.bike_rotation_ratio, 2.0)
+        # gyro_dominance: one-axis rotation concentration (placement-invariant).
+        + margin(f.gyro_dominance, th.bike_gyro_dominance, 0.1)
+        # gyro_entropy: concentrated rotation → low entropy → reward cycling.
+        - margin(f.gyro_entropy, th.bike_gyro_entropy_hi * 0.6, 0.15)
+        if f.has_gyro else -1.0
     )
     scores[idx["standing and moving"]] = moving - margin(f.periodicity, th.periodic, 0.15)
 

@@ -186,6 +186,18 @@ class FormattedAnswer:
         ``True`` when the segment raw-signal pointer resolved.
     label:
         Activity label string.
+    query:
+        Original user question string.
+    activity_event:
+        Human-readable description of the activity/event (derived from
+        route + label).
+    sensor_modality:
+        Which sensors contributed (e.g. "Accelerometer, Gyroscope").
+    sensor_channels:
+        Which channels contributed (e.g. "All" or "acc_z, gyro_y").
+    recording_start_t:
+        Absolute Unix seconds of the recording start, used to convert
+        timestamps to "seconds from start" in the output.
     """
 
     task: str
@@ -198,6 +210,11 @@ class FormattedAnswer:
     widened: bool = False
     raw_ptr_valid: bool = True
     label: str = ""
+    query: str = ""
+    activity_event: str = ""
+    sensor_modality: str = "Accelerometer, Gyroscope"
+    sensor_channels: str = "All"
+    recording_start_t: Optional[float] = None
 
 
 # ---------------------------------------------------------------------------
@@ -549,20 +566,16 @@ _TASK_LABELS: dict[str, str] = {
 }
 
 
-def render_text(answer: FormattedAnswer) -> str:
-    """Render a :class:`FormattedAnswer` to the fixed human-readable template.
+def render_text_legacy(answer: FormattedAnswer) -> str:
+    """Legacy renderer — kept for backward compatibility.
 
-    The template::
+    Template::
 
         === [Task Label] ===
         Answer     : <answer>
         Confidence : <confidence or N/A>
         Interval   : <t_start-t_end or N/A>  [WIDENED]?  (coverage: XX%)
         Explanation: <explanation>
-
-    The ``[WIDENED]`` tag appears when :attr:`FormattedAnswer.widened` is
-    ``True`` so the reader can immediately see that the cited interval is
-    wider than the originally claimed one.
     """
     task_label = _TASK_LABELS.get(answer.task, answer.task)
     conf_str = (
@@ -588,6 +601,70 @@ def render_text(answer: FormattedAnswer) -> str:
         f"Confidence : {conf_str}",
         f"Interval   : {interval_str}",
         f"Explanation: {answer.explanation}",
+    ]
+    return "\n".join(lines)
+
+
+def render_text(answer: FormattedAnswer) -> str:
+    """Render a :class:`FormattedAnswer` to the structured evidence template.
+
+    Template::
+
+        Query: "<original question>"
+        Answer: <answer>
+        Activity/Event: <activity_event>
+        Evidence:
+          Timestamp(s): <start> to <end> (seconds from start)
+          Sensor Modality: <modality>
+          Sensor Channel(s): <channels>
+        Explanation: <explanation>
+    """
+    # --- Query line ---
+    query_line = f'Query: "{answer.query}"' if answer.query else "Query: N/A"
+
+    # --- Activity/Event ---
+    activity_event = answer.activity_event
+    if not activity_event and answer.label:
+        # Derive from label + task
+        activity_event = answer.label.title()
+    if not activity_event:
+        activity_event = "N/A"
+
+    # --- Timestamp(s) ---
+    if answer.evidence_t_start is not None and answer.evidence_t_end is not None:
+        ref = answer.recording_start_t or 0.0
+        t0 = answer.evidence_t_start - ref
+        t1 = answer.evidence_t_end - ref
+        ts_str = f"{t0:.0f} to {t1:.0f} (seconds from start)"
+        if answer.widened:
+            ts_str += "  [WIDENED to nearest recorded interval]"
+    else:
+        ts_str = "N/A"
+
+    # --- Sensor modality ---
+    modality = answer.sensor_modality or "Accelerometer, Gyroscope"
+
+    # --- Sensor channels ---
+    channels = answer.sensor_channels or "All"
+
+    # --- Explanation ---
+    explanation = answer.explanation or "N/A"
+    # Indent continuation lines for readability
+    expl_lines = explanation.split("\n")
+    if len(expl_lines) > 1:
+        explanation = expl_lines[0] + "\n" + "\n".join(
+            f"  {line}" for line in expl_lines[1:]
+        )
+
+    lines = [
+        query_line,
+        f"Answer: {answer.answer}",
+        f"Activity/Event: {activity_event}",
+        f"Evidence:",
+        f"  Timestamp(s): {ts_str}",
+        f"  Sensor Modality: {modality}",
+        f"  Sensor Channel(s): {channels}",
+        f"Explanation: {explanation}",
     ]
     return "\n".join(lines)
 

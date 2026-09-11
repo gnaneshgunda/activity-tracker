@@ -2,6 +2,8 @@
 proc_gyro/
 raw_acc/
 ExtraSensory.per_uuid_features_labels/
+ExtraSensory.raw_measurements*/
+ExtraSensory*.zip
 
 # Python
 __pycache__/
@@ -11,12 +13,30 @@ __pycache__/
 venv/
 env/
 .ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Pipeline runtime outputs
+*.db
+arrays/
+*.npy
 
 # Models / outputs
 *.pkl
 *.joblib
 *.h5
 *.ckpt
+*.npz
+*.gguf
+models/weights/
+
+# Training logs (checkpoints/*.pt remain tracked)
+checkpoints/*.log
+
+# Streamlit secrets
+.streamlit/secrets.toml
 
 # OS / editor
 .DS_Store

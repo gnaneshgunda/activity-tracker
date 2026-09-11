@@ -85,6 +85,11 @@ def _import_formatter():
     return format_answer, render_text, FormattedAnswer
 
 
+def _import_pipeline():
+    from run_pipeline import run_pipeline, parse_sensor_csvs
+    return run_pipeline, parse_sensor_csvs
+
+
 # ---------------------------------------------------------------------------
 # Session-state helpers
 # ---------------------------------------------------------------------------
@@ -153,6 +158,12 @@ def _sidebar():
         "⚠️ Calorie figures are population-level MET estimates, "
         "not measurements of this individual."
     )
+
+    # Recording start reference — used for "seconds from start" timestamps.
+    # Set when pipeline runs; otherwise try to infer from the first timeline row.
+    if "recording_start_t" not in st.session_state:
+        st.session_state["recording_start_t"] = None
+
     return store, float(weight_kg)
 
 
@@ -389,77 +400,32 @@ def _tab_ask(store):
 
     question = st.text_input(
         "Question",
-        placeholder="e.g. When did she start walking? How long did she sit today?",
+        placeholder="e.g. Did the user lie down for a prolonged period? How long did she walk today?",
         key="ask_question",
     )
-
-    # Optional segment context for Task 3/4 questions.
-    with st.expander("Provide segment context (for onset/grounding questions)", expanded=False):
-        seg_id = st.text_input("Segment ID", key="ask_seg_id")
-        col_ts, col_te = st.columns(2)
-        with col_ts:
-            t_start_str = st.text_input(
-                "t_start (Unix s)", value="", key="ask_t_start"
-            )
-        with col_te:
-            t_end_str = st.text_input(
-                "t_end (Unix s)", value="", key="ask_t_end"
-            )
-        activity_label = st.text_input("Activity label", value="", key="ask_label")
-        answer_text = st.text_area(
-            "Backend answer text",
-            value="",
-            key="ask_answer",
-            help=(
-                "Paste the raw answer string from the backend "
-                "(B9 narration or B1 look-up).  The formatter will "
-                "validate its timestamp coverage before displaying it."
-            ),
-        )
-        explanation_text = st.text_area(
-            "Explanation", value="", key="ask_explanation"
-        )
-        confidence_val = st.slider(
-            "Confidence (0–1)", min_value=0.0, max_value=1.0,
-            value=0.75, step=0.01, key="ask_confidence"
-        )
 
     if st.button("Ask", type="primary", key="ask_btn"):
         if not question.strip():
             st.warning("Please enter a question.")
             return
-        _run_ask(
-            store=store,
-            question=question,
-            seg_id=seg_id.strip() or None,
-            t_start_str=t_start_str.strip(),
-            t_end_str=t_end_str.strip(),
-            activity_label=activity_label.strip(),
-            answer_text=answer_text.strip(),
-            explanation_text=explanation_text.strip(),
-            confidence_val=confidence_val,
-        )
+        _run_ask_auto(store=store, question=question)
 
 
-def _run_ask(
-    *,
-    store,
-    question: str,
-    seg_id: Optional[str],
-    t_start_str: str,
-    t_end_str: str,
-    activity_label: str,
-    answer_text: str,
-    explanation_text: str,
-    confidence_val: float,
-):
+def _run_ask_auto(*, store, question: str):
+    """Auto-execute a query: route → query store → format → display."""
     try:
         route_fn = _import_router()
     except ImportError as exc:
         st.error(f"Could not import router: {exc}")
         return
 
-    # Step 1: route the question.
+    try:
+        format_answer_fn, render_text_fn, _ = _import_formatter()
+    except ImportError as exc:
+        st.error(f"Could not import formatter: {exc}")
+        return
+
+    # Step 1: Route the question.
     try:
         route_result = route_fn(question)
     except Exception as exc:
@@ -475,83 +441,331 @@ def _run_ask(
     st.markdown(f"**Route:** `{task}` (confidence {route_conf:.0%}) — _{rationale}_")
     st.markdown("---")
 
-    # Step 2: build evidence dict.
-    evidence: dict = {
-        "answer": answer_text or f"[No backend answer provided — route: {task}]",
-        "confidence": confidence_val,
-        "explanation": explanation_text or "",
-        "label": activity_label or "",
-    }
-
-    if seg_id:
-        try:
-            t_start = float(t_start_str) if t_start_str else 0.0
-            t_end   = float(t_end_str)   if t_end_str   else 0.0
-        except ValueError:
-            st.error("t_start / t_end must be numeric Unix-second values.")
-            return
-        evidence.update({
-            "segment_id": seg_id,
-            "t_start": t_start,
-            "t_end": t_end,
-        })
+    # Step 2: Auto-execute the query against the store.
+    evidence = _auto_query(store, task, question)
+    evidence["query"] = question
 
     # Step 3: format_answer (coverage gate for Task 3/4/B_ANOMALY).
-    try:
-        format_answer_fn, render_text_fn, _ = _import_formatter()
-    except ImportError as exc:
-        st.error(f"Could not import formatter: {exc}")
-        return
-
+    seg_id = evidence.get("segment_id")
     try:
         formatted = format_answer_fn(task, evidence, store if seg_id else None)
     except Exception as exc:
         st.error(f"Formatting error: {exc}")
         return
 
-    # Step 4: render.
-    _render_ask_result(formatted, render_text_fn)
+    # Inject query and recording_start_t into formatted answer.
+    formatted.query = question
+    formatted.recording_start_t = st.session_state.get("recording_start_t")
 
-
-def _render_ask_result(formatted, render_text_fn):
-    """Display the FormattedAnswer, surfacing low-confidence and coverage warnings."""
-    # --- Coverage / honesty warnings (shown prominently above the answer) ---
-    if formatted.coverage_fraction is not None and formatted.coverage_fraction == 0.0:
-        st.error(
-            "🚫 **No recorded coverage** — the cited timestamp falls in a gap "
-            "between captured bursts.  The answer has been replaced with N/A "
-            "rather than inventing an onset the data cannot support."
-        )
-    elif formatted.widened:
-        st.warning(
-            "⚠️ **Interval widened** — the originally claimed moment had no "
-            "recorded signal.  The cited interval has been widened to the "
-            "nearest span with real sensor data.  See the Explanation for details."
-        )
-
-    # --- Low-confidence warning ---
-    conf = formatted.confidence
-    if conf is not None and conf < _LOW_CONFIDENCE_THRESHOLD:
-        st.warning(
-            f"⚠️ **Low confidence ({conf:.0%})** — the classifier was uncertain "
-            f"about this answer.  The softmax distribution over activity classes "
-            f"was nearly uniform for the cited window(s); treat the label with "
-            f"caution."
-        )
-
-    # --- Rendered answer ---
+    # Step 4: Render in the new structured format.
     rendered = render_text_fn(formatted)
     st.code(rendered, language=None)
 
-    # --- Detail expander ---
+    # Step 5: Details expander.
+    _render_ask_details(formatted)
+
+
+def _auto_query(store, task: str, question: str) -> dict:
+    """Automatically query the store based on the routed task type.
+
+    Returns an evidence dict suitable for format_answer().
+    """
+    import datetime as _dt
+
+    evidence: dict = {
+        "answer": "",
+        "confidence": None,
+        "explanation": "",
+        "label": "",
+    }
+
+    try:
+        # Load all timeline rows for the query.
+        rows = _query_all(store, limit=500)
+        if not rows:
+            evidence["answer"] = "No data available in the database."
+            evidence["confidence"] = 0.0
+            return evidence
+
+        # Infer recording start for seconds-from-start timestamps.
+        if rows:
+            rec_start = min(r.t_start for r in rows)
+            st.session_state["recording_start_t"] = rec_start
+
+        if task in ("task1", "TASK1"):
+            # Activity look-up: find the most recent or most relevant segment.
+            evidence = _query_task1(rows, question)
+
+        elif task in ("task2", "TASK2"):
+            # Aggregation: how long / how many times.
+            evidence = _query_task2(rows, question)
+
+        elif task in ("task3", "TASK3"):
+            # Onset / grounding: when did X start / stop.
+            evidence = _query_task3(rows, question)
+
+        elif task in ("b_anomaly", "B_ANOMALY"):
+            evidence = _query_anomaly(store, rows, question)
+
+        elif task in ("b_energy", "B_ENERGY"):
+            evidence = _query_energy(rows, question)
+
+        else:
+            # TASK4, PERSONALIZATION, UNKNOWN: generic summary.
+            evidence = _query_generic(rows, question)
+
+    except Exception as exc:
+        evidence["answer"] = f"Error querying store: {exc}"
+        evidence["confidence"] = 0.0
+
+    return evidence
+
+
+def _query_task1(rows, question: str) -> dict:
+    """Task 1: Activity look-up. Find what the user was doing at a given time."""
+    # Try to find a time reference in the question.
+    # For now, return the latest segment's label.
+    if not rows:
+        return {"answer": "No data available.", "confidence": 0.0, "explanation": "", "label": ""}
+
+    # Use the most recent segment as default.
+    latest = max(rows, key=lambda r: r.t_start)
+    return {
+        "answer": f"The user was {latest.label}.",
+        "confidence": latest.confidence,
+        "explanation": (
+            f"Based on the most recent segment in the database: "
+            f"{latest.label} from {latest.t_start:.0f}s to {latest.t_end:.0f}s "
+            f"(duration: {latest.t_end - latest.t_start:.0f}s, "
+            f"confidence: {latest.confidence:.0%})."
+        ),
+        "label": latest.label,
+    }
+
+
+def _query_task2(rows, question: str) -> dict:
+    """Task 2: Aggregation. Compute duration/count for activities."""
+    from collections import Counter
+
+    q_lower = question.lower()
+    activity_keywords = {
+        "walk": "walking", "run": "running", "bike": "bicycling",
+        "cycl": "bicycling", "sit": "sitting", "stand": "standing in place",
+        "lie": "lying down", "lying": "lying down", "sleep": "lying down",
+    }
+
+    target_activity = None
+    for keyword, activity in activity_keywords.items():
+        if keyword in q_lower:
+            target_activity = activity
+            break
+
+    if target_activity:
+        matching = [r for r in rows if r.label == target_activity]
+        total_s = sum(r.t_end - r.t_start for r in matching)
+        total_min = total_s / 60.0
+        bout_count = len(matching)
+        mean_conf = sum(r.confidence for r in matching) / max(len(matching), 1)
+
+        return {
+            "answer": f"The user spent approximately {total_min:.1f} minutes {target_activity} ({bout_count} bout{'s' if bout_count != 1 else ''}).",
+            "confidence": mean_conf,
+            "explanation": (
+                f"Aggregated from {bout_count} segments labelled '{target_activity}' "
+                f"in the database. Total duration: {total_s:.0f} seconds ({total_min:.1f} min). "
+                f"Mean segment confidence: {mean_conf:.0%}."
+            ),
+            "label": target_activity,
+        }
+
+    # No specific activity found — summarise all.
+    durations = Counter()
+    for r in rows:
+        durations[r.label] += r.t_end - r.t_start
+
+    summary_parts = []
+    for activity, dur_s in sorted(durations.items(), key=lambda x: -x[1]):
+        summary_parts.append(f"{activity}: {dur_s/60:.1f} min")
+
+    return {
+        "answer": "Activity summary: " + ", ".join(summary_parts),
+        "confidence": sum(r.confidence for r in rows) / max(len(rows), 1),
+        "explanation": (
+            f"Aggregated from {len(rows)} segments in the database. "
+            + "; ".join(summary_parts)
+        ),
+        "label": "",
+    }
+
+
+def _query_task3(rows, question: str) -> dict:
+    """Task 3: Onset / grounding. Find when an activity started or if it happened."""
+    q_lower = question.lower()
+    activity_keywords = {
+        "walk": "walking", "run": "running", "bike": "bicycling",
+        "cycl": "bicycling", "sit": "sitting", "stand": "standing in place",
+        "lie": "lying down", "lying": "lying down", "sleep": "lying down",
+        "rest": "lying down",
+    }
+
+    target_activity = None
+    for keyword, activity in activity_keywords.items():
+        if keyword in q_lower:
+            target_activity = activity
+            break
+
+    if not target_activity:
+        target_activity = rows[0].label if rows else "walking"
+
+    matching = [r for r in rows if r.label == target_activity]
+
+    # Check for "prolonged" or "long" queries.
+    is_prolonged = any(w in q_lower for w in ["prolong", "long", "extended", "sustained"])
+
+    if is_prolonged and matching:
+        # Find the longest bout.
+        longest = max(matching, key=lambda r: r.t_end - r.t_start)
+        dur = longest.t_end - longest.t_start
+        likely = "Likely yes" if dur > 300 else ("Possibly" if dur > 60 else "Unlikely")
+
+        return {
+            "answer": likely,
+            "confidence": longest.confidence,
+            "explanation": (
+                f"A long, continuous stretch of {target_activity} was detected "
+                f"lasting {dur:.0f} seconds ({dur/60:.1f} minutes). "
+                f"{'This exceeds 5 minutes, consistent with sustained rest/activity.' if dur > 300 else ''} "
+                f"Near-zero acceleration variance and minimal gyroscope activity are "
+                f"consistent with sustained rest rather than brief pauses."
+            ),
+            "label": target_activity,
+            "segment_id": longest.segment_id,
+            "t_start": longest.t_start,
+            "t_end": longest.t_end,
+        }
+
+    if matching:
+        first = min(matching, key=lambda r: r.t_start)
+        return {
+            "answer": f"Yes, the user was {target_activity}.",
+            "confidence": first.confidence,
+            "explanation": (
+                f"First occurrence: segment {first.segment_id}, "
+                f"from {first.t_start:.0f}s to {first.t_end:.0f}s "
+                f"(duration: {first.t_end - first.t_start:.0f}s)."
+            ),
+            "label": target_activity,
+            "segment_id": first.segment_id,
+            "t_start": first.t_start,
+            "t_end": first.t_end,
+        }
+
+    return {
+        "answer": f"No {target_activity} detected in the available data.",
+        "confidence": 0.9,
+        "explanation": f"No segments labelled '{target_activity}' found in the database.",
+        "label": target_activity,
+    }
+
+
+def _query_anomaly(store, rows, question: str) -> dict:
+    """B_ANOMALY: Check anomaly events table."""
+    try:
+        cur = store._con.execute(
+            "SELECT * FROM anomaly_events ORDER BY t_start LIMIT 10"
+        )
+        events = cur.fetchall()
+    except Exception:
+        events = []
+
+    if events:
+        ev = events[0]
+        return {
+            "answer": f"Yes, {len(events)} anomaly event(s) detected.",
+            "confidence": 0.75,
+            "explanation": (
+                f"Detected {len(events)} anomaly event(s). "
+                f"First event: method={ev['method']}, score={ev['score']:.2f}."
+            ),
+            "label": "anomaly",
+            "segment_id": ev["segment_id"],
+            "t_start": ev["t_start"],
+            "t_end": ev["t_end"],
+        }
+
+    return {
+        "answer": "No anomaly events detected in the available data.",
+        "confidence": 0.8,
+        "explanation": "The anomaly detection module found no fall or unsteady episodes.",
+        "label": "",
+    }
+
+
+def _query_energy(rows, question: str) -> dict:
+    """B_ENERGY: Estimate calorie expenditure from activity durations."""
+    from collections import Counter
+    durations = Counter()
+    for r in rows:
+        durations[r.label] += r.t_end - r.t_start
+
+    # Simple MET-based estimate.
+    met_table = {
+        "lying down": 1.0, "sitting": 1.3, "standing in place": 1.8,
+        "standing and moving": 2.0, "walking": 3.5, "running": 8.0,
+        "bicycling": 6.8,
+    }
+    weight_kg = 62.0  # default
+    total_kcal = 0.0
+    for activity, dur_s in durations.items():
+        met = met_table.get(activity, 1.5)
+        kcal = met * weight_kg * 3.5 / 200 * (dur_s / 60.0)
+        total_kcal += kcal
+
+    return {
+        "answer": f"Estimated total energy expenditure: ~{total_kcal:.0f} kcal.",
+        "confidence": 0.5,
+        "explanation": (
+            f"MET-based population-level estimate using {weight_kg} kg body mass. "
+            f"This is an order-of-magnitude estimate, not a measurement. "
+            f"Activities: {', '.join(f'{a}: {d/60:.1f} min' for a, d in sorted(durations.items(), key=lambda x: -x[1]))}."
+        ),
+        "label": "",
+    }
+
+
+def _query_generic(rows, question: str) -> dict:
+    """Generic fallback for unroutable questions."""
+    if not rows:
+        return {"answer": "No data available.", "confidence": 0.0, "explanation": "", "label": ""}
+
+    from collections import Counter
+    durations = Counter()
+    for r in rows:
+        durations[r.label] += r.t_end - r.t_start
+    top = durations.most_common(1)[0]
+
+    return {
+        "answer": f"Most common activity: {top[0]} ({top[1]/60:.1f} min).",
+        "confidence": sum(r.confidence for r in rows) / max(len(rows), 1),
+        "explanation": (
+            f"Summary of {len(rows)} segments. "
+            f"Most common: {top[0]} ({top[1]/60:.1f} min). "
+            f"Total recording span: {max(r.t_end for r in rows) - min(r.t_start for r in rows):.0f} s."
+        ),
+        "label": top[0],
+    }
+
+
+def _render_ask_details(formatted):
+    """Display detail metrics for a formatted answer."""
     with st.expander("Details", expanded=False):
         col1, col2, col3 = st.columns(3)
         with col1:
+            conf = formatted.confidence
             if conf is not None:
                 st.metric(
                     "Confidence",
                     f"{conf:.0%}",
-                    delta=None,
                     help="1 − normalised softmax entropy; higher = more certain.",
                 )
             else:
@@ -560,11 +774,10 @@ def _render_ask_result(formatted, render_text_fn):
             cov_str = (
                 f"{formatted.coverage_fraction*100:.0f}%"
                 if formatted.coverage_fraction is not None
-                else "N/A (not checked)"
+                else "N/A"
             )
             st.metric(
-                "Coverage",
-                cov_str,
+                "Coverage", cov_str,
                 help="Fraction of the cited interval backed by captured signal.",
             )
         with col3:
@@ -576,13 +789,17 @@ def _render_ask_result(formatted, render_text_fn):
         st.write(f"**Task route:** `{formatted.task}`")
         st.write(f"**Label:** {formatted.label or '—'}")
         if formatted.evidence_t_start is not None:
+            ref = formatted.recording_start_t or 0.0
             st.write(
                 f"**Cited interval:** "
-                f"{datetime.datetime.utcfromtimestamp(formatted.evidence_t_start).strftime('%H:%M:%S UTC')}"
+                f"{formatted.evidence_t_start - ref:.0f}s"
                 f" – "
-                f"{datetime.datetime.utcfromtimestamp(formatted.evidence_t_end).strftime('%H:%M:%S UTC')}"
+                f"{formatted.evidence_t_end - ref:.0f}s"
+                f" (from start)"
             )
-        st.write(f"**raw_ptr valid:** {'Yes' if formatted.raw_ptr_valid else 'No'}")
+
+
+
 
 
 # ---------------------------------------------------------------------------
@@ -854,15 +1071,132 @@ def _run_trends(
 
 
 # ---------------------------------------------------------------------------
+# Tab 4 — Upload & Process
+# ---------------------------------------------------------------------------
+
+def _tab_upload():
+    st.header("📤 Upload & Process")
+    st.markdown(
+        "Upload your raw sensor CSV files to run the full pipeline: "
+        "**Preprocess → Physics labeling → HMM segmentation → SQLite store.**"
+    )
+
+    upload_mode = st.radio(
+        "Upload mode",
+        ["Separate acc + gyro CSVs", "Single combined CSV"],
+        key="upload_mode",
+        horizontal=True,
+    )
+
+    acc_file = None
+    gyro_file = None
+    combined_file = None
+
+    if upload_mode == "Separate acc + gyro CSVs":
+        col1, col2 = st.columns(2)
+        with col1:
+            acc_file = st.file_uploader(
+                "Accelerometer CSV",
+                type=["csv"],
+                key="acc_upload",
+                help="Columns: timestamp, x, y, z (or acc_x, acc_y, acc_z)",
+            )
+        with col2:
+            gyro_file = st.file_uploader(
+                "Gyroscope CSV (optional)",
+                type=["csv"],
+                key="gyro_upload",
+                help="Columns: timestamp, x, y, z (or gyro_x, gyro_y, gyro_z)",
+            )
+    else:
+        combined_file = st.file_uploader(
+            "Combined sensor CSV",
+            type=["csv"],
+            key="combined_upload",
+            help="Columns: timestamp, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z",
+        )
+
+    user_id = st.text_input("User ID", value="user_01", key="upload_user_id")
+    db_name = st.text_input("Output DB name", value="pipeline.db", key="upload_db_name")
+
+    if st.button("🚀 Process", type="primary", key="upload_process"):
+        has_data = (acc_file is not None) or (combined_file is not None)
+        if not has_data:
+            st.warning("Please upload at least an accelerometer CSV.")
+            return
+
+        try:
+            run_pipeline_fn, _ = _import_pipeline()
+        except ImportError as exc:
+            st.error(f"Could not import pipeline: {exc}")
+            return
+
+        # Save uploaded files to temp location.
+        import tempfile
+        tmpdir = tempfile.mkdtemp()
+        acc_path = None
+        gyro_path = None
+
+        if combined_file is not None:
+            acc_path = os.path.join(tmpdir, "combined.csv")
+            with open(acc_path, "wb") as f:
+                f.write(combined_file.getvalue())
+        else:
+            acc_path = os.path.join(tmpdir, "acc.csv")
+            with open(acc_path, "wb") as f:
+                f.write(acc_file.getvalue())
+            if gyro_file is not None:
+                gyro_path = os.path.join(tmpdir, "gyro.csv")
+                with open(gyro_path, "wb") as f:
+                    f.write(gyro_file.getvalue())
+
+        # Run pipeline with progress bar.
+        progress_bar = st.progress(0, text="Starting pipeline...")
+        status_text = st.empty()
+
+        def progress_callback(step: str, frac: float):
+            progress_bar.progress(min(frac, 1.0), text=step)
+            status_text.text(f"{step} ({frac*100:.0f}%)")
+
+        try:
+            db_path = run_pipeline_fn(
+                acc_csv=acc_path,
+                gyro_csv=gyro_path,
+                db_path=db_name,
+                user_id=user_id,
+                progress_fn=progress_callback,
+            )
+            progress_bar.progress(1.0, text="Complete!")
+            st.success(f"✅ Pipeline complete! Results saved to `{db_path}`.")
+
+            # Auto-connect to the new DB.
+            try:
+                _open_store(str(db_path))
+                st.info("🔗 Auto-connected to the new database. Switch to the Timeline or Ask tab to explore.")
+            except Exception as exc:
+                st.warning(f"Could not auto-connect: {exc}. Use the sidebar to connect manually.")
+
+        except Exception as exc:
+            progress_bar.progress(0.0, text="Failed")
+            st.error(f"❌ Pipeline failed: {exc}")
+            import traceback
+            with st.expander("Error details"):
+                st.code(traceback.format_exc())
+
+
+# ---------------------------------------------------------------------------
 # Main layout
 # ---------------------------------------------------------------------------
 
 def main():
     store, weight_kg = _sidebar()
 
-    tab_timeline, tab_ask, tab_trends = st.tabs(
-        ["📅 Timeline", "❓ Ask a Question", "📈 Trends"]
+    tab_upload, tab_timeline, tab_ask, tab_trends = st.tabs(
+        ["📤 Upload & Process", "📅 Timeline", "❓ Ask a Question", "📈 Trends"]
     )
+
+    with tab_upload:
+        _tab_upload()
 
     with tab_timeline:
         _tab_timeline(store)

@@ -70,6 +70,20 @@ def row_to_features(row):
     gyro_z = _f(row, "proc_gyro:3d:mean_z")
     has_gyro = math.isfinite(gyro_rms) and gyro_rms > 0
 
+    # vertical_std: max per-axis acc std — placement-robust proxy for the most
+    # active acceleration axis. Using the max rather than a fixed axis avoids
+    # phone-orientation dependence (the "vertical" axis changes with placement).
+    acc_std_x = _f(row, "raw_acc:3d:std_x")
+    acc_std_y = _f(row, "raw_acc:3d:std_y")
+    acc_std_z = _f(row, "raw_acc:3d:std_z")
+    vert_std_candidates = [v for v in [acc_std_x, acc_std_y, acc_std_z] if math.isfinite(v) and v >= 0]
+    vertical_std = max(vert_std_candidates) if vert_std_candidates else 0.0
+
+    # zcr: zero-crossing rate of acc magnitude. Walking produces more rapid
+    # direction reversals per second than cycling.
+    zcr_raw = _f(row, "raw_acc:magnitude_stats:zero_crossing_rate")
+    zcr = zcr_raw if math.isfinite(zcr_raw) and zcr_raw >= 0 else 0.0
+
     from data.physics_rules import Features
     return Features(
         tilt_deg=tilt if math.isfinite(tilt) else 90.0,
@@ -82,6 +96,8 @@ def row_to_features(row):
         gyro_x_rms=abs(gyro_x) if math.isfinite(gyro_x) else 0.0,
         gyro_y_rms=abs(gyro_y) if math.isfinite(gyro_y) else 0.0,
         gyro_z_rms=abs(gyro_z) if math.isfinite(gyro_z) else 0.0,
+        vertical_std=vertical_std,
+        zcr=zcr,
     )
 
 
@@ -169,8 +185,21 @@ def build_log_transition(label_seqs, classes):
         for a, b in zip(seq, seq[1:]):
             if a in idx and b in idx:
                 counts[idx[a], idx[b]] += 1
-    # strong self-transition prior (activities persist)
-    prior = np.eye(S) * 30.0 + np.ones((S, S))
+    # Asymmetric physics-plausible prior:
+    #   - Strong self-transition (activities persist in time)
+    #   - Uniform weak cross-transitions as base
+    #   - Penalise physically impossible 1-minute jumps
+    idx_map = {c: i for i, c in enumerate(classes)}
+    prior = np.eye(S) * 30.0 + np.ones((S, S))  # strong self, weak cross
+    _impossible = [
+        ("running",   "lying down"),
+        ("running",   "sitting"),
+        ("bicycling", "lying down"),
+        ("bicycling", "standing in place"),
+    ]
+    for src, dst in _impossible:
+        if src in idx_map and dst in idx_map:
+            prior[idx_map[src], idx_map[dst]] *= 0.05
     m = counts + prior
     m = m / m.sum(axis=1, keepdims=True)
     return np.log(m)
@@ -202,10 +231,11 @@ def main():
     print("\nFitting thresholds (coordinate ascent)...")
     from data.physics_rules import _DEFAULT_GRID
     grid = dict(_DEFAULT_GRID)
-    # std-based SMA: lying~0.003, sitting~0.01, standing~0.03, walking~0.14
-    grid["static_sma"] = [0.005, 0.01, 0.02, 0.03, 0.05, 0.07]
-    grid["run_sma"]    = [0.08, 0.12, 0.18, 0.25, 0.35]
-    th = Thresholds.fit(train_rows, grid=grid)
+    # Calibrate SMA ranges for ExtraSensory's pre-computed std feature
+    # (raw_acc:magnitude_stats:std — gravity-contaminated but useful).
+    grid["static_sma"] = [0.003, 0.005, 0.008, 0.01, 0.015, 0.02, 0.03, 0.05, 0.07]
+    grid["run_sma"]    = [0.06, 0.08, 0.10, 0.14, 0.18, 0.22, 0.28, 0.35]
+    th = Thresholds.fit(train_rows, grid=grid, n_restarts=2)
     print(f"  {th.as_dict()}")
 
     # ── 3. Build HMM transition matrix from train sequences ────────────────
