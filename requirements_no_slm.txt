@@ -9,12 +9,9 @@ pandas>=2.0,<3.0
 # For GPU: pip install torch==2.3.0+cu121 --index-url https://download.pytorch.org/whl/cu121
 torch>=2.1,<3.0
 
-# SLM inference (Phi-3 Mini / Gemma-2 via GGUF)
-# CPU-only edge build (recommended):
-#   CMAKE_ARGS="-DLLAMA_BLAS=ON -DLLAMA_BLAS_VENDOR=OpenBLAS" pip install llama-cpp-python
-# GPU build (if available):
-#   CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python
-llama-cpp-python>=0.2.57
+# llama-cpp-python intentionally excluded — requires C++ compiler (MSVC/MinGW).
+# The SLM (Phi-3 Mini) is OPTIONAL. Without it, the router runs in rule-only
+# mode and the exemplar narration uses a null fallback. Everything else works.
 
 # Model download from Hugging Face Hub
 huggingface-hub>=0.23,<2.0
