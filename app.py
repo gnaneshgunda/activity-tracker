@@ -225,6 +225,8 @@ def _tab_timeline(store):
         date_filter = st.date_input(
             "Date (blank = all)",
             value=None,
+            min_value=datetime.date(1970, 1, 1),
+            max_value=datetime.date(2099, 12, 31),
             key="tl_date",
         )
     with col_max:
@@ -328,7 +330,15 @@ def _render_timeline_row(store, row):
         cov_fraction = min(max(cov_fraction, 0.0), 1.0)
 
     badge = _coverage_badge(cov_fraction)
-    ts_str = datetime.datetime.utcfromtimestamp(row.t_start).strftime("%Y-%m-%d %H:%M:%S UTC")
+    dt = datetime.datetime.utcfromtimestamp(row.t_start)
+    # ExtraSensory timestamps are device-relative (seconds from boot), not
+    # wall-clock — they map to 1970. Show as relative offset in that case.
+    if dt.year < 2000:
+        ref = st.session_state.get("recording_start_t", row.t_start)
+        offset = row.t_start - ref
+        ts_str = f"+{offset:.0f}s from start"
+    else:
+        ts_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
     dur_s = row.t_end - row.t_start
 
     label = (row.label or "unknown").title()
@@ -522,13 +532,65 @@ def _auto_query(store, task: str, question: str) -> dict:
 
 
 def _query_task1(rows, question: str) -> dict:
-    """Task 1: Activity look-up. Find what the user was doing at a given time."""
-    # Try to find a time reference in the question.
-    # For now, return the latest segment's label.
+    """Task 1: Activity look-up — what is/was the user doing."""
+    import re
     if not rows:
         return {"answer": "No data available.", "confidence": 0.0, "explanation": "", "label": ""}
 
-    # Use the most recent segment as default.
+    q_lower = question.lower()
+
+    # Label aliases — map question keywords to class names
+    LABEL_ALIASES = {
+        "run": "running", "running": "running", "jog": "running",
+        "walk": "walking", "walking": "walking",
+        "bik": "bicycling", "cycl": "bicycling", "bicycle": "bicycling",
+        "sit": "sitting", "sitting": "sitting", "seat": "sitting",
+        "lie": "lying down", "lay": "lying down", "lying": "lying down", "sleep": "lying down",
+        "stand": "standing in place", "standing": "standing in place",
+    }
+
+    # Check if question targets a specific activity
+    target_label = None
+    for kw, label in LABEL_ALIASES.items():
+        if kw in q_lower:
+            target_label = label
+            break
+
+    # "Is the user running?" / "Did they run?" → look for that activity
+    if target_label:
+        matching = [r for r in rows if r.label == target_label]
+        if matching:
+            # Return the longest matching segment (most confident occurrence)
+            seg = max(matching, key=lambda r: r.t_end - r.t_start)
+            total_min = sum(r.t_end - r.t_start for r in matching) / 60.0
+            return {
+                "answer": f"Yes — {target_label} was detected ({total_min:.1f} min total, "
+                          f"{len(matching)} segment(s)).",
+                "confidence": seg.confidence,
+                "explanation": (
+                    f"{target_label.capitalize()} detected in {len(matching)} segment(s), "
+                    f"totalling {total_min:.1f} min. "
+                    f"Longest: {seg.t_start:.0f}s–{seg.t_end:.0f}s "
+                    f"({seg.t_end-seg.t_start:.0f}s, conf {seg.confidence:.0%})."
+                ),
+                "label": target_label,
+                "t_start": seg.t_start,
+                "t_end": seg.t_end,
+            }
+        else:
+            # Activity not found in data
+            all_labels = list({r.label for r in rows})
+            return {
+                "answer": f"No — {target_label} was not detected in the recording.",
+                "confidence": 0.85,
+                "explanation": (
+                    f"No segments labelled '{target_label}' found. "
+                    f"Detected activities: {', '.join(sorted(all_labels))}."
+                ),
+                "label": "",
+            }
+
+    # No specific activity — return most recent segment
     latest = max(rows, key=lambda r: r.t_start)
     return {
         "answer": f"The user was {latest.label}.",
@@ -951,9 +1013,15 @@ def _tab_trends(store, weight_kg: float):
     with col_uuid:
         uuid = st.text_input("User UUID", key="tr_uuid")
     with col_date_start:
-        date_start = st.date_input("From", value=None, key="tr_date_start")
+        date_start = st.date_input("From", value=None,
+                                    min_value=datetime.date(1970, 1, 1),
+                                    max_value=datetime.date(2099, 12, 31),
+                                    key="tr_date_start")
     with col_date_end:
-        date_end = st.date_input("To",   value=None, key="tr_date_end")
+        date_end = st.date_input("To",   value=None,
+                                  min_value=datetime.date(1970, 1, 1),
+                                  max_value=datetime.date(2099, 12, 31),
+                                  key="tr_date_end")
     with col_act:
         activity = st.selectbox(
             "Activity",
@@ -1196,18 +1264,19 @@ def _tab_upload():
         "**Preprocess → Physics labeling → HMM segmentation → SQLite store.**"
     )
 
+    acc_file = None
+    gyro_file = None
+    dat_file = None
+
+    # File upload mode selector
     upload_mode = st.radio(
         "Upload mode",
-        ["Separate acc + gyro CSVs", "Single combined CSV"],
+        options=["Single day (CSV)", "Multiple days (ExtraSensory .dat)"],
         key="upload_mode",
         horizontal=True,
     )
 
-    acc_file = None
-    gyro_file = None
-    combined_file = None
-
-    if upload_mode == "Separate acc + gyro CSVs":
+    if upload_mode == "Single day (CSV)":
         col1, col2 = st.columns(2)
         with col1:
             acc_file = st.file_uploader(
@@ -1224,18 +1293,21 @@ def _tab_upload():
                 help="Columns: timestamp, x, y, z (or gyro_x, gyro_y, gyro_z)",
             )
     else:
-        combined_file = st.file_uploader(
-            "Combined sensor CSV",
-            type=["csv"],
-            key="combined_upload",
-            help="Columns: timestamp, acc_x, acc_y, acc_z, gyro_x, gyro_y, gyro_z",
+        # ExtraSensory-style .dat files — upload a zip or folder of files
+        dat_file = st.file_uploader(
+            "Upload .dat files (zip or individual)",
+            type=["dat", "zip"],
+            key="dat_upload",
+            accept_multiple_files=True,
+            help="Upload all .m_raw_acc.dat and .m_proc_gyro.dat files for the user. "
+                 "If zipped, the zip should contain only sensor files.",
         )
 
     user_id = st.text_input("User ID", value="user_01", key="upload_user_id")
     db_name = st.text_input("Output DB name", value="pipeline.db", key="upload_db_name")
 
     if st.button("🚀 Process", type="primary", key="upload_process"):
-        has_data = (acc_file is not None) or (combined_file is not None)
+        has_data = (acc_file is not None) or (dat_file is not None)
         if not has_data:
             st.warning("Please upload at least an accelerometer CSV.")
             return
@@ -1252,11 +1324,7 @@ def _tab_upload():
         acc_path = None
         gyro_path = None
 
-        if combined_file is not None:
-            acc_path = os.path.join(tmpdir, "combined.csv")
-            with open(acc_path, "wb") as f:
-                f.write(combined_file.getvalue())
-        else:
+        if upload_mode == "Single day (CSV)":
             acc_path = os.path.join(tmpdir, "acc.csv")
             with open(acc_path, "wb") as f:
                 f.write(acc_file.getvalue())
@@ -1264,41 +1332,80 @@ def _tab_upload():
                 gyro_path = os.path.join(tmpdir, "gyro.csv")
                 with open(gyro_path, "wb") as f:
                     f.write(gyro_file.getvalue())
+            if gyro_file is not None:
+                gyro_path = os.path.join(tmpdir, "gyro.csv")
+                with open(gyro_path, "wb") as f:
+                    f.write(gyro_file.getvalue())
 
-        # Run pipeline with progress bar.
-        progress_bar = st.progress(0, text="Starting pipeline...")
-        status_text = st.empty()
+    elif upload_mode == "Multiple days (ExtraSensory .dat)":
+        # Handle .dat or .zip uploads
+        dat_paths = []
+        if dat_file:
+            import zipfile
+            import io
+            # Zip file with multiple dat files
+            if any(f.name.endswith('.zip') for f in dat_file):
+                zip_bytes = dat_file[0].read()
+                with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zf:
+                    for name in zf.namelist():
+                        if name.endswith('.dat'):
+                            zf.extract(name, tmpdir)
+                            dat_paths.append(os.path.join(tmpdir, name))
+            # Multiple .dat files
+            else:
+                for f in dat_file:
+                    path = os.path.join(tmpdir, f.name)
+                    with open(path, 'wb') as out:
+                        out.write(f.getvalue())
+                    dat_paths.append(path)
 
-        def progress_callback(step: str, frac: float):
-            progress_bar.progress(min(frac, 1.0), text=step)
-            status_text.text(f"{step} ({frac*100:.0f}%)")
+        # Detect acc vs gyro files
+        acc_path = None
+        gyro_path = None
+        for p in dat_paths:
+            if p.endswith('.m_raw_acc.dat'):
+                acc_path = p
+            elif p.endswith('.m_proc_gyro.dat'):
+                gyro_path = p
 
+        if acc_path is None:
+            st.error("No accelerometer data found. Expected .m_raw_acc.dat file(s).")
+            return
+
+    # Run pipeline with progress bar.
+    progress_bar = st.progress(0, text="Starting pipeline...")
+    status_text = st.empty()
+
+    def progress_callback(step: str, frac: float):
+        progress_bar.progress(min(frac, 1.0), text=step)
+        status_text.text(f"{step} ({frac*100:.0f}%)")
+
+    try:
+        db_path = run_pipeline_fn(
+            acc_csv=acc_path,
+            gyro_csv=gyro_path,
+            db_path=db_name,
+            user_id=user_id,
+            checkpoint_path="checkpoints/lstm_alpha_v4.pt",
+            loco_path="checkpoints/loco.npz",
+            progress_fn=progress_callback,
+        )
+        progress_bar.progress(1.0, text="Complete!")
+        st.success(f"✅ Pipeline complete! Results saved to `{db_path}`.")
+
+        # Auto-connect to the new DB.
         try:
-            db_path = run_pipeline_fn(
-                acc_csv=acc_path,
-                gyro_csv=gyro_path,
-                db_path=db_name,
-                user_id=user_id,
-                checkpoint_path="checkpoints/lstm_alpha_v4.pt",
-                loco_path="checkpoints/loco.npz",
-                progress_fn=progress_callback,
-            )
-            progress_bar.progress(1.0, text="Complete!")
-            st.success(f"✅ Pipeline complete! Results saved to `{db_path}`.")
-
-            # Auto-connect to the new DB.
-            try:
-                _open_store(str(db_path))
-                st.info("🔗 Auto-connected to the new database. Switch to the Timeline or Ask tab to explore.")
-            except Exception as exc:
-                st.warning(f"Could not auto-connect: {exc}. Use the sidebar to connect manually.")
-
+            _open_store(str(db_path))
+            st.info("🔗 Auto-connected to the new database. Switch to the Timeline or Ask tab to explore.")
         except Exception as exc:
-            progress_bar.progress(0.0, text="Failed")
-            st.error(f"❌ Pipeline failed: {exc}")
-            import traceback
-            with st.expander("Error details"):
-                st.code(traceback.format_exc())
+            st.warning(f"Could not auto-connect: {exc}. Use the sidebar to connect manually.")
+
+    except Exception as exc:
+        progress_bar.progress(0.0, text="Failed")
+        st.error(f"❌ Pipeline failed: {exc}")
+        import traceback
+        with st.expander("Error details"):
+            st.code(traceback.format_exc())
 
 
 # ---------------------------------------------------------------------------

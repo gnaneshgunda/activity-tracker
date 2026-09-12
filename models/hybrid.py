@@ -194,17 +194,16 @@ def physics_override(
     collapses. The physics running rule (high SMA + high jerk + high cadence)
     is physically unambiguous and needs no neural backup.
 
-    Bicycling gets a softer override (gyro rotation ratio + dominance) only
-    when the combined prediction is already pointing toward locomotion.
-
     This does NOT override for posture classes — those are genuinely ambiguous
     and the LSTM + alpha should decide.
     """
-    import math
-    result = combined.copy()
+    # Handle both 1D (n_classes,) and 2D (1, n_classes) inputs
+    squeezed = combined.ndim > 1
+    result = combined.squeeze(0).copy() if squeezed else combined.copy()
+
     idx = {c: i for i, c in enumerate(classes)}
-    if "running" not in idx:
-        return result
+    if "running" not in idx or len(result) != len(classes):
+        return combined  # classes mismatch — leave unchanged
 
     # Hard running override: two of three physics cues must fire
     run_cues = 0
@@ -216,12 +215,10 @@ def physics_override(
         run_cues += 1
 
     if run_cues >= 2:
-        # Physics says running with high confidence — force it
         result = np.zeros_like(result)
         result[idx["running"]] = 1.0
-        return result
 
-    return result
+    return result[np.newaxis] if squeezed else result
 
 
 
