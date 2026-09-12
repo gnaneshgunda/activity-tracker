@@ -662,16 +662,36 @@ def render_text(answer: FormattedAnswer) -> str:
             f"  {line}" for line in expl_lines[1:]
         )
 
+    # Optionally show absolute recording start (UTC) when available.
+    recording_line = None
+    if answer.recording_start_t is not None:
+        try:
+            rec_ts = float(answer.recording_start_t)
+            rec_dt = datetime.datetime.fromtimestamp(rec_ts, tz=datetime.timezone.utc)
+            # ExtraSensory timestamps are device-relative; if year<2000 show relative offset
+            if rec_dt.year < 2000:
+                recording_line = f"Recording start: t=+{int(rec_ts)}s from device boot"
+            else:
+                recording_line = f"Recording start: {rec_dt.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        except Exception:
+            recording_line = None
+
     lines = [
         query_line,
         f"Answer: {answer.answer}",
         f"Activity/Event: {activity_event}",
+    ]
+
+    if recording_line:
+        lines.append(recording_line)
+
+    lines.extend([
         f"Evidence:",
         f"  Timestamp(s): {ts_str}",
         f"  Sensor Modality: {modality}",
         f"  Sensor Channel(s): {channels}",
         f"Explanation: {explanation}",
-    ]
+    ])
     return "\n".join(lines)
 
 

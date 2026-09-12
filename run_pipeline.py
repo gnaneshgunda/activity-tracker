@@ -563,10 +563,8 @@ def run_pipeline(
                 combined = combine_probs(p_ml, phys, a)
 
                 # Physics hard override for running — no retraining needed
-                # Running has high SMA + high jerk + high cadence; physics
-                # is reliable here even when LSTM hasn't seen enough examples
-                from models.hybrid import physics_override, _window_to_features as _wtf
-                feats_for_override = _wtf(window, signal)
+                from models.hybrid import physics_override
+                feats_for_override = _window_to_features(window)
                 combined = physics_override(combined, feats_for_override, th,
                                             tuple(window.classes))
 
