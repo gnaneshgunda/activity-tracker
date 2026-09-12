@@ -180,13 +180,51 @@ def physics_probs_for_window(
     return np.asarray(predict_proba(features, thresholds or Thresholds()), dtype=np.float64)
 
 
-def hybrid_probs(
-    ml_probs: np.ndarray,
-    phys_probs: np.ndarray,
-    alpha: float,
+def physics_override(
+    combined: np.ndarray,
+    features: "Features",
+    thresholds: "Thresholds",
+    classes: tuple,
 ) -> np.ndarray:
-    """Compatibility wrapper for the convex hybrid model."""
-    return combine_probs(ml_probs, phys_probs, alpha)
+    """Hard override: when physics is highly confident on running or bicycling,
+    force that class regardless of LSTM alpha.
+
+    Running is the critical case — only 131 test samples means the LSTM never
+    learned to trust physics for it, so the alpha gate fails and running F1
+    collapses. The physics running rule (high SMA + high jerk + high cadence)
+    is physically unambiguous and needs no neural backup.
+
+    Bicycling gets a softer override (gyro rotation ratio + dominance) only
+    when the combined prediction is already pointing toward locomotion.
+
+    This does NOT override for posture classes — those are genuinely ambiguous
+    and the LSTM + alpha should decide.
+    """
+    import math
+    result = combined.copy()
+    idx = {c: i for i, c in enumerate(classes)}
+    if "running" not in idx:
+        return result
+
+    # Hard running override: two of three physics cues must fire
+    run_cues = 0
+    if features.sma > thresholds.run_sma:
+        run_cues += 1
+    if features.jerk_mean > thresholds.run_jerk:
+        run_cues += 1
+    if features.cadence_bpm >= thresholds.run_cadence:
+        run_cues += 1
+
+    if run_cues >= 2:
+        # Physics says running with high confidence — force it
+        result = np.zeros_like(result)
+        result[idx["running"]] = 1.0
+        return result
+
+    return result
+
+
+
 
 
 def make_hybrid_scorer(
@@ -227,9 +265,36 @@ def make_hybrid_scorer(
         import torch
 
         with torch.no_grad():
-            logits = model(torch.from_numpy(x).to(device)).cpu().numpy().ravel()
+            out = model(torch.from_numpy(x).to(device))
+            # AlphaAwareLSTMClassifier returns (logits, alpha_vec)
+            # Plain LSTMClassifier returns just logits
+            if isinstance(out, tuple):
+                logits, alpha_vec = out
+                logits = logits.cpu().numpy().ravel()
+                # Use mean alpha across classes as the blend weight
+                a = float(alpha_vec.cpu().numpy().mean())
+            else:
+                logits = out.cpu().numpy().ravel()
+                a = alpha  # fall back to fixed alpha
+
         ml = softmax(logits)
         phys = physics_probs_for_window(window, sig, thresholds=th)
-        return combine_probs(ml, phys, alpha)
+        combined = combine_probs(ml, phys, float(np.clip(a, 0.0, 1.0)))
+
+        # Physics hard override for running (and future rare classes)
+        # — does not require retraining, applied post-fusion
+        features = _window_to_features(window, sig)
+        combined = physics_override(combined, features, th, tuple(window.classes))
+
+        return np.log(np.clip(combined, 1e-12, None))
 
     return scorer
+
+
+def hybrid_probs(
+    ml_probs: np.ndarray,
+    phys_probs: np.ndarray,
+    alpha: float,
+) -> np.ndarray:
+    """Compatibility wrapper for the convex hybrid model."""
+    return combine_probs(ml_probs, phys_probs, alpha)

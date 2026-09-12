@@ -235,6 +235,14 @@ DEFAULT_RULES: tuple[_Rule, ...] = (
         "duration/aggregation question (TASK2)",
     ),
     _r(
+        r"\b((how (many|much)|what is the).*(data|recordings?|sensor data|coverage|dataset)|"
+        r"((day|days|hour|hours|week|weeks|month|months|minute|minutes|time).*(data|recordings?|sensor data|coverage|dataset)|"
+        r"(data|recordings?|sensor data|coverage|dataset).*(day|days|hour|hours|week|weeks|month|months|minute|minutes|time)))\b",
+        Route.TASK2,
+        0.90,
+        "data-coverage / time-span question (TASK2)",
+    ),
+    _r(
         r"\b(how many (time|instance|occurrence|period|bout|episode)s?)\b",
         Route.TASK2,
         0.90,

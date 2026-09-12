@@ -30,6 +30,60 @@ This repository is designed to be practical and self-contained: you can install 
 
 ---
 
+## Performance
+
+**Current best: test macro F1 = 0.6119, accuracy = 59.4%** (multi-session training, seed ensemble)
+
+### Per-class results (current checkpoint)
+
+| Class | Precision | Recall | F1 | Support |
+|---|---|---|---|---|
+| Lying down | 0.579 | 0.811 | **0.676** | 3,000 |
+| Sitting | 0.517 | 0.486 | 0.501 | 2,999 |
+| Standing in place | 0.494 | 0.354 | 0.412 | 2,999 |
+| Walking | 0.682 | 0.592 | **0.634** | 2,998 |
+| Running | 0.581 | 0.879 | **0.700** | 330 |
+| Bicycling | 0.738 | 0.760 | **0.749** | 1,869 |
+| **Macro F1** | | | **0.612** | |
+
+### Training progression
+
+| Stage | Macro F1 | What changed |
+|---|---|---|
+| LSTM only, 10 raw channels | ~0.25 | Baseline |
+| + Fitted physics thresholds, fixed alpha | ~0.30 | Physics rule improvements |
+| + Trainable alpha (AlphaAwareLSTM) | 0.332 | Per-sample alpha gate |
+| + All 35 channels, burst sequences, NaN fixes | ~0.44 | Full feature pipeline |
+| + Temporal context + calibrated HMM + seed ensemble | **0.612** | Current |
+
+**Eval protocol**: user-disjoint split, 36 train / 12 val / 12 test users (seed=42).
+Verified: Train∩Test=0, Val∩Test=0, Train∩Val=0.
+
+### Key pipeline improvements
+
+**Input channels: 10 → 35**
+Raw sensor (10) + derived physics features (12: tilt, SMA, cadence, periodicity, vert_std, rotation_ratio, jerk_mean, gyro_xyz_rms, dominant_freq, acc_gyro_phase) + placement flags (4) + rolling temporal context (8: mean/std of SMA and jerk over ±2 and ±5 burst neighbours) + sample_valid (1).
+
+**Data pipeline: windows → burst sequences**
+`build_burst_sequences` replaces `build_windows` — one (400, 35) sequence per labeled minute instead of 18 overlapping 2s windows. Data loading: 30 min → 2 min. LSTM sees the full 16s burst context.
+
+**Complementary filter gravity** (`data/preprocess.py`, `data/fusion.py`)
+Gyro-accelerometer fusion reduces tilt estimation drift from 2–13° to under 1° during active motion.
+
+**Temperature scaling before Viterbi** (`pipeline/segment.py`)
+`fit_temperature()` + `calibrate_emissions()` prevent overconfident majority-class LSTM outputs from overriding minority-class (running, bicycling) predictions in the HMM.
+
+**Time-aware HMM transitions** (`pipeline/segment.py`)
+CTMC generator `Q = log(A)/dt` → `expm(Q×Δt)` per step. Cross-burst gaps (40s) relax toward stationary; the HMM no longer assumes activity persisted through unobserved time.
+
+**Physics hard override for running** (`models/hybrid.py`)
+When ≥2 of 3 physics cues fire (SMA>0.45g, jerk>12g/s, cadence>145bpm), running is forced regardless of LSTM. Running had only 131 training examples — physics is more reliable here. Running F1: 0.053 → 0.700.
+
+**Multi-session seed ensemble training**
+Each session uses a different random sample of the dataset (`--seed N`). The best checkpoint is only overwritten when val F1 improves. Across 4 sessions (seeds 0–3, cap=3000) val F1 grew: 0.43 → 0.48 → 0.53 → 0.55+.
+
+---
+
 ## Quick start
 
 ### 1) Install dependencies

@@ -62,7 +62,8 @@ def main() -> None:
         batch_size=args.batch_size, epochs=args.epochs, patience=args.patience,
         seed=args.seed, valid_channel=ds.SEQ_CHANNELS.index("sample_valid"),
     )
-    model, result = train(sets["train"], sets["val"], norm, cfg)
+    model, result = train(sets["train"], sets["val"], norm, cfg,
+                          checkpoint_path=args.out)
 
     absent = tuple(set(result.absent_classes) | set(args.drop))
     m = evaluate(model, norm.apply(sets["test"].X).astype(np.float32), sets["test"].y,

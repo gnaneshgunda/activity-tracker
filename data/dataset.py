@@ -74,6 +74,9 @@ LABELS_ROOT_SENTINEL = Path(LABELS)  # default labels root, relative to cwd
 #: Derived: tilt_deg, sma, cadence_hz, periodicity, vertical_std, rotation_ratio,
 #:          jerk_mean, gyro_x_rms, gyro_y_rms, gyro_z_rms, dominant_freq_hz, acc_gyro_phase.
 #: Placement: phone_pocket, phone_hand, phone_bag, phone_table (0/1 per timestep).
+#: Temporal context (8): rolling mean/std of SMA and jerk over ±2 and ±5 burst neighbours.
+#:   sma_roll2_mean, sma_roll2_std, jerk_roll2_mean, jerk_roll2_std  (±2 bursts)
+#:   sma_roll5_mean, sma_roll5_std, jerk_roll5_mean, jerk_roll5_std  (±5 bursts)
 CHANNELS: tuple[str, ...] = (
     # raw sensor
     "body_acc_x", "body_acc_y", "body_acc_z",
@@ -98,6 +101,15 @@ CHANNELS: tuple[str, ...] = (
     "phone_hand",
     "phone_bag",
     "phone_table",
+    # temporal context: rolling stats over neighbouring bursts (broadcast constant)
+    "sma_roll2_mean",
+    "sma_roll2_std",
+    "jerk_roll2_mean",
+    "jerk_roll2_std",
+    "sma_roll5_mean",
+    "sma_roll5_std",
+    "jerk_roll5_mean",
+    "jerk_roll5_std",
 )
 
 N_CHANNELS = len(CHANNELS)
@@ -145,17 +157,23 @@ class Normaliser:
 
     mean: np.ndarray
     std: np.ndarray
+    clip_sigma: float = 5.0   # clip to ±clip_sigma after standardising
 
     def apply(self, X: np.ndarray) -> np.ndarray:
-        return (X - self.mean) / self.std
+        Z = (X - self.mean) / self.std
+        if self.clip_sigma > 0:
+            Z = np.clip(Z, -self.clip_sigma, self.clip_sigma)
+        return Z
 
     def save(self, path: os.PathLike | str) -> None:
-        np.savez(path, mean=self.mean, std=self.std)
+        np.savez(path, mean=self.mean, std=self.std,
+                 clip_sigma=np.array([self.clip_sigma]))
 
     @staticmethod
     def load(path: os.PathLike | str) -> "Normaliser":
         d = np.load(path)
-        return Normaliser(mean=d["mean"], std=d["std"])
+        clip = float(d["clip_sigma"][0]) if "clip_sigma" in d else 5.0
+        return Normaliser(mean=d["mean"], std=d["std"], clip_sigma=clip)
 
 
 # --------------------------------------------------------------------------
@@ -532,14 +550,24 @@ FLAG_CHANNELS: tuple[str, ...] = (
 )
 
 
-def fit_normaliser(X: np.ndarray, *, eps: float = 1e-6) -> Normaliser:
+def fit_normaliser(X: np.ndarray, *, eps: float = 1e-6, clip_sigma: float = 5.0) -> Normaliser:
     """Per-channel mean/std over ``(n, T, C)``. Fit on the training split only.
 
     Indicator channels (:data:`FLAG_CHANNELS`) are left untouched (mean 0,
     std 1) so they stay interpretable 0/1 flags.
+
+    ``clip_sigma``: after standardising, values beyond ±clip_sigma are clipped.
+    This prevents outlier spikes (falls, impacts) from driving ±15 normalised
+    inputs into the LSTM which causes NaN loss on random initialisation.
+    The clipping is baked into the Normaliser so it applies at inference too.
     """
-    mean = X.reshape(-1, X.shape[-1]).mean(axis=0)
-    std = X.reshape(-1, X.shape[-1]).std(axis=0)
+    flat = X.reshape(-1, X.shape[-1])
+    # Use median + IQR-based robust stats to reduce outlier influence on the
+    # normalization parameters themselves.
+    mean = np.median(flat, axis=0)
+    # Robust std: IQR / 1.349 ≈ population std for Gaussian, outlier-resistant
+    q75, q25 = np.percentile(flat, 75, axis=0), np.percentile(flat, 25, axis=0)
+    std = np.where((q75 - q25) > eps, (q75 - q25) / 1.349, flat.std(axis=0))
     std = np.where(std < eps, 1.0, std)
     n_ch = X.shape[-1]
     names = SEQ_CHANNELS if n_ch == len(SEQ_CHANNELS) else CHANNELS
@@ -548,7 +576,11 @@ def fit_normaliser(X: np.ndarray, *, eps: float = 1e-6) -> Normaliser:
             i = names.index(name)
             if i < n_ch:
                 mean[i], std[i] = 0.0, 1.0
-    return Normaliser(mean=mean.astype(np.float32), std=std.astype(np.float32))
+    return Normaliser(
+        mean=mean.astype(np.float32),
+        std=std.astype(np.float32),
+        clip_sigma=float(clip_sigma),
+    )
 
 
 # --------------------------------------------------------------------------
@@ -655,12 +687,76 @@ def _burst_sequence(args) -> Optional[tuple[np.ndarray, int, str, int]]:
     block = np.concatenate([
         body, grav, gy, present,   # 10 raw channels
         phys_block,                # 16 derived + placement channels
-        valid.astype(np.float64)[:, None],  # sample_valid (1)
-    ], axis=1)  # total: 27 = len(SEQ_CHANNELS)
+        # NOTE: sample_valid is NOT appended here — it is added last by
+        # build_burst_sequences after _attach_temporal_context so that it
+        # always sits at index len(SEQ_CHANNELS)-1 = 34, matching SEQ_CHANNELS.
+    ], axis=1)  # total: 26 raw+physics channels (sample_valid added later)
 
     if n < timesteps:
         block = np.vstack([block, np.zeros((timesteps - n, block.shape[1]))])
-    return block.astype(np.float32), label_index, uuid, ts
+    # Store valid flag separately so build_burst_sequences can append it last
+    valid_col = np.zeros(timesteps, dtype=np.float32)
+    valid_col[:n] = valid.astype(np.float32)
+    return block.astype(np.float32), label_index, uuid, ts, valid_col
+
+
+def _attach_temporal_context(Xs: list[np.ndarray]) -> list[np.ndarray]:
+    """Add rolling-window temporal context channels to a list of burst sequences.
+
+    Each burst gets 8 additional channels (appended as constant columns):
+    rolling mean/std of SMA (channel 11) and jerk_mean (channel 16) over
+    ±2 and ±5 burst neighbours.
+
+    Why this helps: a single 20s burst cannot distinguish "sitting still" from
+    "lying still" — the tilt and SMA values overlap. But the *trend* over the
+    surrounding 2-5 minutes often can: a person who just sat down from walking
+    has neighbours with higher SMA; a person lying down all morning has
+    uniformly low SMA across many neighbours. The LSTM can learn this context.
+
+    The rolling window is centred (±k bursts), uses only available neighbours
+    (no padding with zeros for edge bursts), and never crosses user sessions
+    because sequences are already sorted and grouped by the caller.
+    """
+    n = len(Xs)
+    if n == 0:
+        return Xs
+
+    # Extract SMA (index 11) and jerk_mean (index 16) from the first timestep
+    # of each sequence. These physics features are broadcast constants so
+    # any timestep works — we use index 0 (always a real sample, never padding,
+    # since padding is added after and valid_cols tracks which rows are real).
+    sma_vals   = np.array([float(x[0, 11]) for x in Xs], dtype=np.float64)
+    jerk_vals  = np.array([float(x[0, 16]) for x in Xs], dtype=np.float64)
+
+    def _rolling(vals: np.ndarray, half: int) -> tuple[np.ndarray, np.ndarray]:
+        """Centred rolling mean and std with half-width ``half``."""
+        means = np.empty(n, dtype=np.float64)
+        stds  = np.empty(n, dtype=np.float64)
+        for i in range(n):
+            lo = max(0, i - half)
+            hi = min(n, i + half + 1)
+            win = vals[lo:hi]
+            means[i] = float(np.mean(win))
+            stds[i]  = float(np.std(win)) if win.size > 1 else 0.0
+        return means, stds
+
+    sma_m2,  sma_s2  = _rolling(sma_vals,  half=2)
+    jerk_m2, jerk_s2 = _rolling(jerk_vals, half=2)
+    sma_m5,  sma_s5  = _rolling(sma_vals,  half=5)
+    jerk_m5, jerk_s5 = _rolling(jerk_vals, half=5)
+
+    result = []
+    for i, x in enumerate(Xs):
+        T = x.shape[0]
+        ctx = np.array([
+            sma_m2[i],  sma_s2[i],
+            jerk_m2[i], jerk_s2[i],
+            sma_m5[i],  sma_s5[i],
+            jerk_m5[i], jerk_s5[i],
+        ], dtype=np.float32)
+        ctx_block = np.tile(ctx[None, :], (T, 1))   # (T, 8)
+        result.append(np.concatenate([x, ctx_block], axis=1))
+    return result
 
 
 def build_burst_sequences(
@@ -681,19 +777,31 @@ def build_burst_sequences(
     """
     workers = workers or min(16, (os.cpu_count() or 4))
     args = [(m.uuid, m.timestamp, m.label_index, str(raw_root), timesteps) for m in minutes]
-    Xs, ys, us, tss = [], [], [], []
+    Xs, ys, us, tss, valid_cols = [], [], [], [], []
     with ProcessPoolExecutor(max_workers=workers) as pool:
         for res in pool.map(_burst_sequence, args, chunksize=32):
             if res is None:
                 continue
-            block, li, uuid, ts = res
-            Xs.append(block); ys.append(li); us.append(uuid); tss.append(ts)
+            block, li, uuid, ts, valid_col = res
+            Xs.append(block)
+            ys.append(li)
+            us.append(uuid)
+            tss.append(ts)
+            valid_cols.append(valid_col)
     if not Xs:
         return WindowSet(
             X=np.zeros((0, timesteps, len(SEQ_CHANNELS)), np.float32),
             y=np.zeros(0, np.int64), uuids=np.zeros(0, dtype=object),
             timestamps=np.zeros(0, np.int64),
         )
+    # 1. Attach rolling temporal context features (8 channels)
+    Xs = _attach_temporal_context(Xs)
+    # 2. Append sample_valid as the LAST channel so it stays at index 34
+    #    matching SEQ_CHANNELS[-1] == "sample_valid".
+    #    Padding rows have valid=0.0; real signal rows have valid=1.0.
+    for i in range(len(Xs)):
+        vc = valid_cols[i][:, None].astype(np.float32)  # (T, 1)
+        Xs[i] = np.concatenate([Xs[i], vc], axis=1)
     return WindowSet(
         X=np.stack(Xs), y=np.array(ys, dtype=np.int64),
         uuids=np.array(us, dtype=object), timestamps=np.array(tss, dtype=np.int64),

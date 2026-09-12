@@ -38,9 +38,9 @@ def build_split_sets(
             seed=seed,
             balance_users=balance_users,
         )
-        print(f"[data] building windows for {name} ({len(sampled)} minutes)...")
-        sets[name] = ds.build_windows(
-            sampled, RAW, labels_root=LABELS, workers=_DATA_WORKERS
+        print(f"[data] building burst sequences for {name} ({len(sampled)} minutes)...")
+        sets[name] = ds.build_burst_sequences(
+            sampled, RAW, workers=_DATA_WORKERS
         )
     return sets, plan
 

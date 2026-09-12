@@ -95,6 +95,23 @@ class LSTMClassifier(nn.Module):
             nn.Linear(d * 2, n_classes),
         )
         self.n_classes = n_classes
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """Orthogonal LSTM weights + small bias init to prevent activation
+        explosion on long sequences (T=400). Without this, random PyTorch
+        default init causes NaN loss on the very first forward pass."""
+        for name, param in self.lstm.named_parameters():
+            if "weight_ih" in name:
+                nn.init.xavier_uniform_(param)
+            elif "weight_hh" in name:
+                # Orthogonal init for recurrent weights — key for long sequences
+                nn.init.orthogonal_(param)
+            elif "bias" in name:
+                nn.init.zeros_(param)
+                # Set forget gate bias to 1.0 to help gradient flow early on
+                n = param.size(0)
+                param.data[n // 4: n // 2].fill_(1.0)
 
     def _pool(self, out: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if mask is None:
@@ -169,6 +186,19 @@ class AlphaAwareLSTMClassifier(nn.Module):
             nn.Sigmoid(),
         )
         self.n_classes = n_classes
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """Orthogonal LSTM weights + forget-gate bias=1 to prevent NaN on T=400."""
+        for name, param in self.lstm.named_parameters():
+            if "weight_ih" in name:
+                nn.init.xavier_uniform_(param)
+            elif "weight_hh" in name:
+                nn.init.orthogonal_(param)
+            elif "bias" in name:
+                nn.init.zeros_(param)
+                n = param.size(0)
+                param.data[n // 4: n // 2].fill_(1.0)
 
     def _pool(self, out: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         if mask is None:
@@ -195,20 +225,20 @@ class AlphaAwareLSTMClassifier(nn.Module):
 
 @dataclass
 class TrainConfig:
-    hidden: int = 96
+    hidden: int = 64           # reduced from 96 — smaller model fits ~9k sequences better
     layers: int = 2
-    dropout: float = 0.3
     bidirectional: bool = True
-    lr: float = 1e-3
+    lr: float = 3e-4
     weight_decay: float = 1e-4
-    batch_size: int = 256
-    epochs: int = 30
-    patience: int = 6
+    batch_size: int = 128
+    epochs: int = 60
+    patience: int = 10
     class_weighted: bool = True
     alpha_loss_weight: float = 0.1
     seed: int = 0
     device: str = "cpu"
-    #: Index of a 0/1 validity channel for masked pooling; None disables it.
+    warmup_epochs: int = 3
+    dropout: float = 0.5       # high dropout — main regulariser vs 331k params / ~9k samples
     valid_channel: Optional[int] = None
 
 
@@ -415,6 +445,8 @@ def train_joint_alpha(
     *,
     model: Optional[nn.Module] = None,
     start_epoch: int = 0,
+    checkpoint_path: Optional[str] = None,
+    resume_checkpoint_path: Optional[str] = None,
 ) -> tuple[AlphaAwareLSTMClassifier, TrainResult]:
     """Train a shared LSTM with a sample-wise alpha gate and a label head.
 
@@ -422,6 +454,14 @@ def train_joint_alpha(
     of the ML head and the physics prior, which makes the gate prefer the better
     of the two experts for each window. The training objective is a weighted sum
     of class cross-entropy and alpha regression loss.
+
+    ``checkpoint_path`` — when given, the best model so far is written to disk
+    immediately after each epoch that improves validation macro-F1.
+
+    ``resume_checkpoint_path`` — when given, the latest epoch state (not just
+    best) is written here after every epoch. Use this to resume training after
+    stopping: pass it to --resume and it picks up from the last completed epoch
+    regardless of whether it was a new best.
     """
     cfg = config or TrainConfig()
     torch.manual_seed(cfg.seed)
@@ -453,10 +493,35 @@ def train_joint_alpha(
     weights = _class_weights(train_set.y, len(classes)).to(cfg.device) if cfg.class_weighted else None
     alpha_criterion = nn.MSELoss()
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="max", factor=0.5, patience=2)
+
+    # Warmup scheduler: ramp from lr/10 → lr over warmup_epochs, then
+    # ReduceLROnPlateau for the rest. Stops the early oscillation we saw
+    # where val F1 peaked at epoch 3 then degraded.
+    def _lr_lambda(epoch):
+        if cfg.warmup_epochs > 0 and epoch < cfg.warmup_epochs:
+            return 0.1 + 0.9 * (epoch / cfg.warmup_epochs)
+        return 1.0
+
+    warmup_sched = torch.optim.lr_scheduler.LambdaLR(opt, _lr_lambda)
+    plateau_sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        opt, mode="max", factor=0.5, patience=3, min_lr=1e-6
+    )
 
     loader = _loader(Xtr, train_set.y, cfg.batch_size, shuffle=True)
-    best_f1, best_epoch, best_state, bad = -1.0, -1, None, 0
+    # Seed best_f1 from the --out checkpoint so a new seed session never
+    # overwrites a better result from a previous session.
+    _resume_best_f1 = -1.0
+    if checkpoint_path is not None:
+        try:
+            import torch as _t
+            _cp = _t.load(str(checkpoint_path), map_location="cpu", weights_only=False)
+            _resume_best_f1 = float(_cp.get("best_val_macro_f1", -1.0))
+            if _resume_best_f1 > 0:
+                print(f"[train_joint_alpha] existing checkpoint val_f1={_resume_best_f1:.4f} "
+                      f"— will only overwrite if we beat it")
+        except Exception:
+            pass
+    best_f1, best_epoch, best_state, bad = _resume_best_f1, -1, None, 0
     history: list[dict[str, float]] = []
 
     for epoch in range(start_epoch, cfg.epochs):
@@ -498,7 +563,9 @@ def train_joint_alpha(
         with torch.no_grad():
             metrics = evaluate(model, Xva, val_set.y, classes=classes,
                                device=cfg.device, absent=absent)
-        sched.step(metrics["macro_f1"])
+        warmup_sched.step()
+        plateau_sched.step(metrics["macro_f1"])
+        current_lr = opt.param_groups[0]["lr"]
         row = {
             "epoch": epoch,
             "train_loss": total / max(seen, 1),
@@ -506,18 +573,40 @@ def train_joint_alpha(
             "val_accuracy": metrics["accuracy"],
         }
         history.append(row)
-        print(f"[train_joint_alpha] epoch {epoch + 1}/{cfg.epochs} train_loss={row['train_loss']:.4f} val_macro_f1={row['val_macro_f1']:.4f} val_accuracy={row['val_accuracy']:.4f}")
+        print(f"[train_joint_alpha] epoch {epoch + 1}/{cfg.epochs} train_loss={row['train_loss']:.4f} val_macro_f1={row['val_macro_f1']:.4f} val_accuracy={row['val_accuracy']:.4f} lr={current_lr:.2e}")
         log.info("epoch %d loss=%.4f val_macro_f1=%.4f", epoch, row["train_loss"], row["val_macro_f1"])
 
         if metrics["macro_f1"] > best_f1:
             best_f1, best_epoch, bad = metrics["macro_f1"], epoch, 0
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            if checkpoint_path is not None:
+                _partial = TrainResult(
+                    config=cfg, classes=classes, absent_classes=absent,
+                    train_counts=counts, best_epoch=best_epoch,
+                    best_val_macro_f1=best_f1, history=history,
+                    completed_epochs=start_epoch + len(history),
+                )
+                save_checkpoint(checkpoint_path, model, normaliser, _partial)
+                log.info("saved best checkpoint (epoch %d, val_macro_f1=%.4f) → %s",
+                         epoch, best_f1, checkpoint_path)
+                print(f"[train_joint_alpha] ✓ new best (epoch {epoch+1}, val_macro_f1={best_f1:.4f}) saved → {checkpoint_path}")
         else:
             bad += 1
             if bad >= cfg.patience:
                 log.info("early stop at epoch %d", epoch)
                 print(f"[train_joint_alpha] early stop at epoch {epoch + 1}")
                 break
+
+        # Always save latest state so training can be resumed after interruption
+        if resume_checkpoint_path is not None:
+            _latest = TrainResult(
+                config=cfg, classes=classes, absent_classes=absent,
+                train_counts=counts, best_epoch=best_epoch,
+                best_val_macro_f1=best_f1, history=history,
+                completed_epochs=start_epoch + len(history),
+            )
+            save_checkpoint(resume_checkpoint_path, model, normaliser, _latest)
+            log.debug("saved latest checkpoint (epoch %d) → %s", epoch, resume_checkpoint_path)
 
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -538,12 +627,17 @@ def train(
     *,
     model: Optional[nn.Module] = None,
     start_epoch: int = 0,
+    checkpoint_path: Optional[str] = None,
 ) -> tuple[LSTMClassifier, TrainResult]:
     """Train with early stopping on validation macro-F1.
 
     ``start_epoch`` lets a checkpoint resume from a previously saved model. When
     used, ``config.epochs`` is interpreted as the total target epoch count rather
     than the number of epochs to add, so the run can continue naturally.
+
+    ``checkpoint_path`` — when given, the best model so far is written to disk
+    immediately after each epoch that improves validation macro-F1. If training
+    crashes or is killed, the last saved file is the best checkpoint seen so far.
     """
     cfg = config or TrainConfig()
     torch.manual_seed(cfg.seed)
@@ -569,7 +663,16 @@ def train(
     weights = _class_weights(train_set.y, len(classes)).to(cfg.device) if cfg.class_weighted else None
     criterion = nn.CrossEntropyLoss(weight=weights)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    sched = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="max", factor=0.5, patience=2)
+
+    def _lr_lambda(epoch):
+        if cfg.warmup_epochs > 0 and epoch < cfg.warmup_epochs:
+            return 0.1 + 0.9 * (epoch / cfg.warmup_epochs)
+        return 1.0
+
+    warmup_sched = torch.optim.lr_scheduler.LambdaLR(opt, _lr_lambda)
+    plateau_sched = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        opt, mode="max", factor=0.5, patience=3, min_lr=1e-6
+    )
 
     loader = _loader(Xtr, train_set.y, cfg.batch_size, shuffle=True)
     best_f1, best_epoch, best_state, bad = -1.0, -1, None, 0
@@ -590,7 +693,8 @@ def train(
 
         metrics = evaluate(model, Xva, val_set.y, classes=classes,
                            device=cfg.device, absent=absent)
-        sched.step(metrics["macro_f1"])
+        warmup_sched.step()
+        plateau_sched.step(metrics["macro_f1"])
         row = {
             "epoch": epoch,
             "train_loss": total / max(seen, 1),
@@ -603,6 +707,16 @@ def train(
         if metrics["macro_f1"] > best_f1:
             best_f1, best_epoch, bad = metrics["macro_f1"], epoch, 0
             best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+            if checkpoint_path is not None:
+                _partial = TrainResult(
+                    config=cfg, classes=classes, absent_classes=absent,
+                    train_counts=counts, best_epoch=best_epoch,
+                    best_val_macro_f1=best_f1, history=history,
+                    completed_epochs=start_epoch + len(history),
+                )
+                save_checkpoint(checkpoint_path, model, normaliser, _partial)
+                log.info("saved best checkpoint (epoch %d, val_macro_f1=%.4f) → %s",
+                         epoch, best_f1, checkpoint_path)
         else:
             bad += 1
             if bad >= cfg.patience:

@@ -291,21 +291,24 @@ def run_pipeline(
     *,
     db_path: str | Path = "pipeline.db",
     user_id: str = "user_01",
+    checkpoint_path: Optional[str | Path] = None,
+    loco_path: Optional[str | Path] = None,
     progress_fn: Optional[Callable[[str, float], None]] = None,
 ) -> Path:
-    """Run the full pipeline: CSV → preprocess → physics label → segment → store.
+    """Run the full pipeline: CSV → preprocess → LSTM+physics hybrid → segment → store.
 
     Parameters
     ----------
-    acc_csv : path to accelerometer CSV
-    gyro_csv : optional path to gyroscope CSV
+    acc_csv : path to accelerometer CSV / .dat file
+    gyro_csv : optional path to gyroscope CSV / .dat file
     db_path : output SQLite database path
     user_id : user identifier for provenance
+    checkpoint_path : path to AlphaAwareLSTMClassifier .pt checkpoint.
+        When provided, scoring uses LSTM+physics fusion (alpha*p_lstm + (1-alpha)*p_physics).
+        When None, falls back to physics-only scoring.
+    loco_path : path to LocoClassifier .npz weights.
+        When provided, used inside the physics rule tree for walk/cycle separation.
     progress_fn : optional callback(step_name, fraction) for UI progress bars
-
-    Returns
-    -------
-    Path to the populated SQLite database.
     """
     db_path = Path(db_path)
 
@@ -379,6 +382,7 @@ def run_pipeline(
     signals: dict[int, PreprocessedSignal] = {}
     all_windows = []
     total_chunks = len(chunks)
+    scoring_cache: dict = {}  # holds lstm_model, lstm_norm, thresholds, loco_clf across chunks
 
     for ci, (c_acc_t, c_acc, c_gyro_t, c_gyro) in enumerate(chunks):
         _progress("Preprocessing", 0.2 + 0.3 * (ci / total_chunks))
@@ -415,18 +419,173 @@ def run_pipeline(
         if not windows:
             continue
 
-        # ── Step 4: Physics scoring ────────────────────────────────────
-        from data.physics_rules import Thresholds, predict_proba, make_scorer
+        # ── Step 4: Hybrid LSTM + physics scoring ──────────────────────
+        from data.physics_rules import Thresholds, predict_proba
+        from models.loco_classifier import LocoClassifier
         from pipeline.recognize import attach_probs
 
-        th = Thresholds()
+        # Load LocoClassifier once (cached after first chunk)
+        if "loco_clf" not in scoring_cache:
+            lp = loco_path or Path("checkpoints/loco.npz")
+            scoring_cache["loco_clf"] = LocoClassifier.try_load(lp)
+            if scoring_cache["loco_clf"] is not None:
+                log.info("LocoClassifier loaded from %s", lp)
+            else:
+                log.info("No LocoClassifier found at %s — using rotation_ratio fallback", lp)
 
-        def _scorer(window):
-            feats = _window_to_features(window)
-            probs = predict_proba(feats, th)
-            return np.log(np.clip(probs, 1e-12, None))
+        if "thresholds" not in scoring_cache:
+            scoring_cache["thresholds"] = Thresholds()
 
-        scored_windows = attach_probs(windows, _scorer)
+        th = scoring_cache["thresholds"]
+        loco_clf = scoring_cache["loco_clf"]
+
+        # Load LSTM checkpoint once (cached after first chunk)
+        if "lstm_model" not in scoring_cache:
+            cp = checkpoint_path or Path("checkpoints/lstm_alpha_v4.pt")
+            if Path(str(cp)).is_file():
+                try:
+                    from models.lstm import load_checkpoint
+                    lstm_model, lstm_norm, _ = load_checkpoint(str(cp))
+                    lstm_model.eval()
+                    scoring_cache["lstm_model"] = lstm_model
+                    scoring_cache["lstm_norm"] = lstm_norm
+                    log.info("LSTM checkpoint loaded from %s", cp)
+                except Exception as e:
+                    log.warning("Could not load LSTM checkpoint %s: %s — using physics only", cp, e)
+                    scoring_cache["lstm_model"] = None
+                    scoring_cache["lstm_norm"] = None
+            else:
+                log.info("No LSTM checkpoint at %s — using physics-only scoring", cp)
+                scoring_cache["lstm_model"] = None
+                scoring_cache["lstm_norm"] = None
+
+        lstm_model = scoring_cache["lstm_model"]
+        lstm_norm  = scoring_cache["lstm_norm"]
+
+        if lstm_model is not None:
+            # Full hybrid: alpha * p_lstm + (1-alpha) * p_physics
+            from models.hybrid import physics_probs_for_window, combine_probs
+            from pipeline.recognize import softmax
+            import torch
+            from data.dataset import SEQ_CHANNELS, BURST_TIMESTEPS
+            import math as _math
+
+            def _hybrid_scorer(window):
+                # Physics branch
+                phys = physics_probs_for_window(window, signal,
+                                                thresholds=th)
+
+                # LSTM branch — build (1, T, C) input tensor for this window
+                from data.dataset import _burst_sequence as _bs
+                # Re-use the window's signal slice
+                i0 = max(0, int(round(window.t_start_s * signal.fs)))
+                i1 = min(signal.n_samples,
+                         int(round(window.t_end_s * signal.fs)) + 1)
+                n = i1 - i0
+                body = signal.body_acc[i0:i1]
+                grav = signal.gravity[i0:i1]
+                if signal.gyro_raw is None:
+                    gy = np.zeros((n, 3)); pres = np.zeros((n, 1))
+                else:
+                    gy_raw = signal.gyro_raw[i0:i1]
+                    ok = np.all(np.isfinite(gy_raw), axis=1)
+                    pres = ok.astype(np.float64)[:, None]
+                    gy = np.where(ok[:, None], gy_raw, 0.0)
+
+                valid = (np.all(np.isfinite(body), axis=1) &
+                         np.all(np.isfinite(grav), axis=1))
+                body = np.where(valid[:, None], body, 0.0)
+                grav = np.where(valid[:, None], grav, 0.0)
+
+                # Compute derived physics features for this window
+                from pipeline.recognize import (vertical_component,
+                    dominant_freq_hz, acc_gyro_phase, cadence_from_vertical)
+                from data.physics_rules import periodicity_from_vertical
+                vertical = vertical_component(body, grav)
+                sma = float(np.nanmean(np.linalg.norm(body, axis=1)))
+                g_mean = np.nanmean(grav, axis=0)
+                g_norm = float(np.linalg.norm(g_mean))
+                tilt = float(_math.degrees(_math.acos(
+                    max(-1.0, min(1.0, float(np.dot(g_mean/g_norm, [0,0,-1]))))
+                ))) if g_norm > 1e-9 else 90.0
+                fin_v = vertical[np.isfinite(vertical)]
+                vert_std = float(np.std(fin_v)) if fin_v.size > 1 else 0.0
+                cad_hz, _, _ = cadence_from_vertical(vertical, fs=signal.fs, sma=sma)
+                cad_hz = float(cad_hz) if _math.isfinite(cad_hz) else 0.0
+                per = float(periodicity_from_vertical(vertical, signal.fs))
+                diff_b = np.diff(body, axis=0) * signal.fs
+                jerk_mags = np.linalg.norm(diff_b, axis=1)
+                jerk_mean = float(np.nanmean(jerk_mags)) if jerk_mags.size else 0.0
+                gx = float(np.sqrt(np.nanmean(np.square(gy[:,0]))))
+                gy_ = float(np.sqrt(np.nanmean(np.square(gy[:,1]))))
+                gz = float(np.sqrt(np.nanmean(np.square(gy[:,2]))))
+                rot_ratio = _math.sqrt(gx**2+gy_**2+gz**2) / (sma + 1e-6)
+                dom_hz = float(dominant_freq_hz(vertical, fs=signal.fs))
+                has_gyro = signal.has_gyro
+                phase = 0.0
+                if has_gyro:
+                    rms_ax = np.array([gx, gy_, gz])
+                    dom_ax = int(np.argmax(rms_ax))
+                    phase = float(acc_gyro_phase(vertical, gy[:, dom_ax], fs=signal.fs))
+
+                phys_vec = np.array([
+                    tilt/90.0, sma, cad_hz, per, vert_std, rot_ratio,
+                    jerk_mean, gx, gy_, gz, dom_hz, phase,
+                    0.0, 0.0, 0.0, 0.0,  # placement unknown
+                ], dtype=np.float64)
+
+                T = min(n, BURST_TIMESTEPS)
+                raw_block = np.concatenate([body[:T], grav[:T], gy[:T],
+                                            pres[:T]], axis=1)  # (T, 10)
+                phys_tile = np.tile(phys_vec[None, :], (T, 1))   # (T, 16)
+                # Temporal context channels (8) — zero at inference since we
+                # have no neighbouring bursts available in the single-file pipeline
+                ctx_zeros = np.zeros((T, 8), dtype=np.float64)
+                val_col = valid[:T].astype(np.float64)[:, None]   # (T, 1)
+                block = np.concatenate([raw_block, phys_tile, ctx_zeros, val_col],
+                                       axis=1).astype(np.float32)  # (T, 35)
+                if T < BURST_TIMESTEPS:
+                    pad = np.zeros((BURST_TIMESTEPS - T, block.shape[1]),
+                                   dtype=np.float32)
+                    block = np.vstack([block, pad])
+
+                x = lstm_norm.apply(block[None])  # (1, T, 35)
+                with torch.no_grad():
+                    out = lstm_model(torch.from_numpy(x.astype(np.float32)))
+                    if isinstance(out, tuple):
+                        logits_t, alpha_t = out
+                        logits_arr = logits_t.cpu().numpy().ravel()
+                        a = float(np.clip(alpha_t.cpu().numpy().mean(), 0.0, 1.0))
+                    else:
+                        logits_arr = out.cpu().numpy().ravel()
+                        a = 0.5
+                p_ml = softmax(logits_arr)
+                combined = combine_probs(p_ml, phys, a)
+
+                # Physics hard override for running — no retraining needed
+                # Running has high SMA + high jerk + high cadence; physics
+                # is reliable here even when LSTM hasn't seen enough examples
+                from models.hybrid import physics_override, _window_to_features as _wtf
+                feats_for_override = _wtf(window, signal)
+                combined = physics_override(combined, feats_for_override, th,
+                                            tuple(window.classes))
+
+                return np.log(np.clip(combined, 1e-12, None))
+
+            scored_windows = attach_probs(windows, _hybrid_scorer)
+        else:
+            # Physics-only fallback
+            def _physics_scorer(window):
+                feats = _window_to_features(window)
+                probs = predict_proba(feats, th, loco_clf)
+                # Apply running override (already handled by label_activity,
+                # but apply to soft probs too for consistency)
+                from models.hybrid import physics_override
+                probs = physics_override(probs, feats, th, tuple(window.classes))
+                return np.log(np.clip(probs, 1e-12, None))
+
+            scored_windows = attach_probs(windows, _physics_scorer)
+
         all_windows.extend(scored_windows)
 
     if not all_windows:
