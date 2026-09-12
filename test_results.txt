@@ -7,13 +7,8 @@ Processing data for user: test_user
   gyro : proc_gyro/797D145F-3858-4A7F-A7C2-A4EB721E133C
   db   : test_797D145F.db
 
-  Using first 180 of 3593 .dat files in 797D145F-3858-4A7F-A7C2-A4EB721E133C/
-  Merged → 143820 rows (~180 min of data)
-  Using first 180 of 3593 .dat files in 797D145F-3858-4A7F-A7C2-A4EB721E133C/
-  Merged → 114795 rows (~180 min of data)
-  [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   0.0%  Parsing CSV files                         [██████████████████████████████] 100.0%  Parsing CSV files                       
-  [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.0%  Chunking into bursts                      [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.0%  Preprocessing                           [load_checkpoint] loaded AlphaAwareLSTMClassifier from checkpoints/lstm_alpha_v4.pt at epoch 50
-  [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.2%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.4%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.6%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.8%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  21.0%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  21.2%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  21.4%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  21.6%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  21.8%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.0%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.2%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.4%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.5%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.7%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.9%  Preprocessing                             [██████░░░░░░░░░░░░░░░░░░░░░░░░]  23.1%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  23.3%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  23.5%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  23.7%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  23.9%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.1%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.3%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.5%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.7%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.9%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.1%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.3%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.5%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.7%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.9%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  26.1%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  26.3%  Preprocessing                             [███████░░░░░░░░░░░░░░░░░░░░░░░]  26.5%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  26.7%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  26.9%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  27.1%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  27.3%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  27.5%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  27.6%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  27.8%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  28.0%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  28.2%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  28.4%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  28.6%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  28.8%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  29.0%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  29.2%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  29.4%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  29.6%  Preprocessing                             [████████░░░░░░░░░░░░░░░░░░░░░░]  29.8%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  30.0%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  30.2%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  30.4%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  30.6%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  30.8%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  31.0%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  31.2%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  31.4%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  31.6%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  31.8%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  32.0%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  32.2%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  32.4%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  32.5%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  32.7%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  32.9%  Preprocessing                             [█████████░░░░░░░░░░░░░░░░░░░░░]  33.1%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  33.3%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  33.5%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  33.7%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  33.9%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  34.1%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  34.3%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  34.5%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  34.7%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  34.9%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  35.1%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  35.3%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  35.5%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  35.7%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  35.9%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  36.1%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  36.3%  Preprocessing                             [██████████░░░░░░░░░░░░░░░░░░░░]  36.5%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  36.7%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  36.9%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  37.1%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  37.3%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  37.5%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  37.6%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  37.8%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  38.0%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  38.2%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  38.4%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  38.6%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  38.8%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  39.0%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  39.2%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  39.4%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  39.6%  Preprocessing                             [███████████░░░░░░░░░░░░░░░░░░░]  39.8%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  40.0%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  40.2%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  40.4%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  40.6%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  40.8%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  41.0%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  41.2%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  41.4%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  41.6%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  41.8%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  42.0%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  42.2%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  42.4%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  42.5%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  42.7%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  42.9%  Preprocessing                             [████████████░░░░░░░░░░░░░░░░░░]  43.1%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  43.3%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  43.5%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  43.7%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  43.9%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  44.1%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  44.3%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  44.5%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  44.7%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  44.9%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  45.1%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  45.3%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  45.5%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  45.7%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  45.9%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  46.1%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  46.3%  Preprocessing                             [█████████████░░░░░░░░░░░░░░░░░]  46.5%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  46.7%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  46.9%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  47.1%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  47.3%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  47.5%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  47.6%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  47.8%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  48.0%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  48.2%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  48.4%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  48.6%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  48.8%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  49.0%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  49.2%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  49.4%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  49.6%  Preprocessing                             [██████████████░░░░░░░░░░░░░░░░]  49.8%  Preprocessing                             [██████████████████░░░░░░░░░░░░]  60.0%  Segmenting (HMM Viterbi)                  [████████████████████████░░░░░░]  80.0%  Writing to database                       [██████████████████████████████] 100.0%  Complete                                
+  [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   2.0%  Loading model                           [load_checkpoint] loaded AlphaAwareLSTMClassifier from checkpoints/lstm_alpha_v4.pt at epoch 50
+  [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.0%  Burst 1/180                               [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.4%  Burst 2/180                               [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   5.8%  Burst 3/180                               [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   6.2%  Burst 4/180                               [█░░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   6.6%  Burst 5/180                               [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   6.9%  Burst 6/180                               [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   7.3%  Burst 7/180                               [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   7.7%  Burst 8/180                               [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   8.1%  Burst 9/180                               [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   8.5%  Burst 10/180                              [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   8.9%  Burst 11/180                              [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   9.3%  Burst 12/180                              [██░░░░░░░░░░░░░░░░░░░░░░░░░░░░]   9.7%  Burst 13/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.1%  Burst 14/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.4%  Burst 15/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  10.8%  Burst 16/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  11.2%  Burst 17/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  11.6%  Burst 18/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  12.0%  Burst 19/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  12.4%  Burst 20/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  12.8%  Burst 21/180                              [███░░░░░░░░░░░░░░░░░░░░░░░░░░░]  13.2%  Burst 22/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  13.6%  Burst 23/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  13.9%  Burst 24/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  14.3%  Burst 25/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  14.7%  Burst 26/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.1%  Burst 27/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.5%  Burst 28/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  15.9%  Burst 29/180                              [████░░░░░░░░░░░░░░░░░░░░░░░░░░]  16.3%  Burst 30/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  16.7%  Burst 31/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  17.1%  Burst 32/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  17.4%  Burst 33/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  17.8%  Burst 34/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  18.2%  Burst 35/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  18.6%  Burst 36/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  19.0%  Burst 37/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  19.4%  Burst 38/180                              [█████░░░░░░░░░░░░░░░░░░░░░░░░░]  19.8%  Burst 39/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.2%  Burst 40/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.6%  Burst 41/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  20.9%  Burst 42/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  21.3%  Burst 43/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  21.7%  Burst 44/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.1%  Burst 45/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.5%  Burst 46/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  22.9%  Burst 47/180                              [██████░░░░░░░░░░░░░░░░░░░░░░░░]  23.3%  Burst 48/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  23.7%  Burst 49/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.1%  Burst 50/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.4%  Burst 51/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  24.8%  Burst 52/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.2%  Burst 53/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  25.6%  Burst 54/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  26.0%  Burst 55/180                              [███████░░░░░░░░░░░░░░░░░░░░░░░]  26.4%  Burst 56/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  26.8%  Burst 57/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  27.2%  Burst 58/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  27.6%  Burst 59/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  27.9%  Burst 60/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  28.3%  Burst 61/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  28.7%  Burst 62/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  29.1%  Burst 63/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  29.5%  Burst 64/180                              [████████░░░░░░░░░░░░░░░░░░░░░░]  29.9%  Burst 65/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  30.3%  Burst 66/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  30.7%  Burst 67/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  31.1%  Burst 68/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  31.4%  Burst 69/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  31.8%  Burst 70/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  32.2%  Burst 71/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  32.6%  Burst 72/180                              [█████████░░░░░░░░░░░░░░░░░░░░░]  33.0%  Burst 73/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  33.4%  Burst 74/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  33.8%  Burst 75/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  34.2%  Burst 76/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  34.6%  Burst 77/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  34.9%  Burst 78/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  35.3%  Burst 79/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  35.7%  Burst 80/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  36.1%  Burst 81/180                              [██████████░░░░░░░░░░░░░░░░░░░░]  36.5%  Burst 82/180                              [███████████░░░░░░░░░░░░░░░░░░░]  36.9%  Burst 83/180                              [███████████░░░░░░░░░░░░░░░░░░░]  37.3%  Burst 84/180                              [███████████░░░░░░░░░░░░░░░░░░░]  37.7%  Burst 85/180                              [███████████░░░░░░░░░░░░░░░░░░░]  38.1%  Burst 86/180                              [███████████░░░░░░░░░░░░░░░░░░░]  38.4%  Burst 87/180                              [███████████░░░░░░░░░░░░░░░░░░░]  38.8%  Burst 88/180                              [███████████░░░░░░░░░░░░░░░░░░░]  39.2%  Burst 89/180                              [███████████░░░░░░░░░░░░░░░░░░░]  39.6%  Burst 90/180                              [███████████░░░░░░░░░░░░░░░░░░░]  40.0%  Burst 91/180                              [████████████░░░░░░░░░░░░░░░░░░]  40.4%  Burst 92/180                              [████████████░░░░░░░░░░░░░░░░░░]  40.8%  Burst 93/180                              [████████████░░░░░░░░░░░░░░░░░░]  41.2%  Burst 94/180                              [████████████░░░░░░░░░░░░░░░░░░]  41.6%  Burst 95/180                              [████████████░░░░░░░░░░░░░░░░░░]  41.9%  Burst 96/180                              [████████████░░░░░░░░░░░░░░░░░░]  42.3%  Burst 97/180                              [████████████░░░░░░░░░░░░░░░░░░]  42.7%  Burst 98/180                              [████████████░░░░░░░░░░░░░░░░░░]  43.1%  Burst 99/180                              [█████████████░░░░░░░░░░░░░░░░░]  43.5%  Burst 100/180                             [█████████████░░░░░░░░░░░░░░░░░]  43.9%  Burst 101/180                             [█████████████░░░░░░░░░░░░░░░░░]  44.3%  Burst 102/180                             [█████████████░░░░░░░░░░░░░░░░░]  44.7%  Burst 103/180                             [█████████████░░░░░░░░░░░░░░░░░]  45.1%  Burst 104/180                             [█████████████░░░░░░░░░░░░░░░░░]  45.4%  Burst 105/180                             [█████████████░░░░░░░░░░░░░░░░░]  45.8%  Burst 106/180                             [█████████████░░░░░░░░░░░░░░░░░]  46.2%  Burst 107/180                             [█████████████░░░░░░░░░░░░░░░░░]  46.6%  Burst 108/180                             [██████████████░░░░░░░░░░░░░░░░]  47.0%  Burst 109/180                             [██████████████░░░░░░░░░░░░░░░░]  47.4%  Burst 110/180                             [██████████████░░░░░░░░░░░░░░░░]  47.8%  Burst 111/180                             [██████████████░░░░░░░░░░░░░░░░]  48.2%  Burst 112/180                             [██████████████░░░░░░░░░░░░░░░░]  48.6%  Burst 113/180                             [██████████████░░░░░░░░░░░░░░░░]  48.9%  Burst 114/180                             [██████████████░░░░░░░░░░░░░░░░]  49.3%  Burst 115/180                             [██████████████░░░░░░░░░░░░░░░░]  49.7%  Burst 116/180                             [███████████████░░░░░░░░░░░░░░░]  50.1%  Burst 117/180                             [███████████████░░░░░░░░░░░░░░░]  50.5%  Burst 118/180                             [███████████████░░░░░░░░░░░░░░░]  50.9%  Burst 119/180                             [███████████████░░░░░░░░░░░░░░░]  51.3%  Burst 120/180                             [███████████████░░░░░░░░░░░░░░░]  51.7%  Burst 121/180                             [███████████████░░░░░░░░░░░░░░░]  52.1%  Burst 122/180                             [███████████████░░░░░░░░░░░░░░░]  52.4%  Burst 123/180                             [███████████████░░░░░░░░░░░░░░░]  52.8%  Burst 124/180                             [███████████████░░░░░░░░░░░░░░░]  53.2%  Burst 125/180                             [████████████████░░░░░░░░░░░░░░]  53.6%  Burst 126/180                             [████████████████░░░░░░░░░░░░░░]  54.0%  Burst 127/180                             [████████████████░░░░░░░░░░░░░░]  54.4%  Burst 128/180                             [████████████████░░░░░░░░░░░░░░]  54.8%  Burst 129/180                             [████████████████░░░░░░░░░░░░░░]  55.2%  Burst 130/180                             [████████████████░░░░░░░░░░░░░░]  55.6%  Burst 131/180                             [████████████████░░░░░░░░░░░░░░]  55.9%  Burst 132/180                             [████████████████░░░░░░░░░░░░░░]  56.3%  Burst 133/180                             [█████████████████░░░░░░░░░░░░░]  56.7%  Burst 134/180                             [█████████████████░░░░░░░░░░░░░]  57.1%  Burst 135/180                             [█████████████████░░░░░░░░░░░░░]  57.5%  Burst 136/180                             [█████████████████░░░░░░░░░░░░░]  57.9%  Burst 137/180                             [█████████████████░░░░░░░░░░░░░]  58.3%  Burst 138/180                             [█████████████████░░░░░░░░░░░░░]  58.7%  Burst 139/180                             [█████████████████░░░░░░░░░░░░░]  59.1%  Burst 140/180                             [█████████████████░░░░░░░░░░░░░]  59.4%  Burst 141/180                             [█████████████████░░░░░░░░░░░░░]  59.8%  Burst 142/180                             [██████████████████░░░░░░░░░░░░]  60.2%  Burst 143/180                             [██████████████████░░░░░░░░░░░░]  60.6%  Burst 144/180                             [██████████████████░░░░░░░░░░░░]  61.0%  Burst 145/180                             [██████████████████░░░░░░░░░░░░]  61.4%  Burst 146/180                             [██████████████████░░░░░░░░░░░░]  61.8%  Burst 147/180                             [██████████████████░░░░░░░░░░░░]  62.2%  Burst 148/180                             [██████████████████░░░░░░░░░░░░]  62.6%  Burst 149/180                             [██████████████████░░░░░░░░░░░░]  62.9%  Burst 150/180                             [███████████████████░░░░░░░░░░░]  63.3%  Burst 151/180                             [███████████████████░░░░░░░░░░░]  63.7%  Burst 152/180                             [███████████████████░░░░░░░░░░░]  64.1%  Burst 153/180                             [███████████████████░░░░░░░░░░░]  64.5%  Burst 154/180                             [███████████████████░░░░░░░░░░░]  64.9%  Burst 155/180                             [███████████████████░░░░░░░░░░░]  65.3%  Burst 156/180                             [███████████████████░░░░░░░░░░░]  65.7%  Burst 157/180                             [███████████████████░░░░░░░░░░░]  66.1%  Burst 158/180                             [███████████████████░░░░░░░░░░░]  66.4%  Burst 159/180                             [████████████████████░░░░░░░░░░]  66.8%  Burst 160/180                             [████████████████████░░░░░░░░░░]  67.2%  Burst 161/180                             [████████████████████░░░░░░░░░░]  67.6%  Burst 162/180                             [████████████████████░░░░░░░░░░]  68.0%  Burst 163/180                             [████████████████████░░░░░░░░░░]  68.4%  Burst 164/180                             [████████████████████░░░░░░░░░░]  68.8%  Burst 165/180                             [████████████████████░░░░░░░░░░]  69.2%  Burst 166/180                             [████████████████████░░░░░░░░░░]  69.6%  Burst 167/180                             [████████████████████░░░░░░░░░░]  69.9%  Burst 168/180                             [█████████████████████░░░░░░░░░]  70.3%  Burst 169/180                             [█████████████████████░░░░░░░░░]  70.7%  Burst 170/180                             [█████████████████████░░░░░░░░░]  71.1%  Burst 171/180                             [█████████████████████░░░░░░░░░]  71.5%  Burst 172/180                             [█████████████████████░░░░░░░░░]  71.9%  Burst 173/180                             [█████████████████████░░░░░░░░░]  72.3%  Burst 174/180                             [█████████████████████░░░░░░░░░]  72.7%  Burst 175/180                             [█████████████████████░░░░░░░░░]  73.1%  Burst 176/180                             [██████████████████████░░░░░░░░]  73.4%  Burst 177/180                             [██████████████████████░░░░░░░░]  73.8%  Burst 178/180                             [██████████████████████░░░░░░░░]  74.2%  Burst 179/180                             [██████████████████████░░░░░░░░]  74.6%  Burst 180/180                             [████████████████████████░░░░░░]  80.0%  Segmenting (HMM Viterbi)                  [████████████████████████████░░]  95.0%  Writing to database                       [██████████████████████████████] 100.0%  Complete                                
 
 Done. Results in: test_797D145F.db
 
@@ -22,53 +17,54 @@ Done. Results in: test_797D145F.db
 ============================================================
 
 --- Timeline (first 30 segments) ---
-/media/gnaneshgunda/Windows/activity-tracker/cli.py:183: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+/media/gnaneshgunda/Windows/activity-tracker/cli.py:207: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
   dt = datetime.datetime.utcfromtimestamp(t_start)
 
 Timeline (30 segments):
 
-Time    Activity           Duration  Conf
-------  -----------------  --------  ----
-+0s     lying down         16s       25% 
-+91s    lying down         16s       25% 
-+146s   lying down         5s        25% 
-+151s   lying down         11s       23% 
-+179s   standing in place  16s       27% 
-+239s   lying down         16s       24% 
-+332s   standing in place  16s       25% 
-+392s   standing in place  16s       38% 
-+446s   walking            6s        22% 
-+452s   standing in place  11s       22% 
-+480s   lying down         15s       23% 
-+572s   lying down         16s       27% 
-+622s   standing in place  10s       28% 
-+632s   standing in place  6s        24% 
-+660s   lying down         15s       26% 
-+752s   lying down         16s       27% 
-+779s   lying down         16s       23% 
-+872s   standing in place  16s       26% 
-+932s   standing in place  16s       36% 
-+959s   standing in place  16s       30% 
-+1052s  standing in place  16s       28% 
-+1079s  standing in place  16s       28% 
-+1173s  walking            16s       42% 
-+1200s  bicycling          6s        25% 
-+1206s  walking            9s        36% 
-+1283s  walking            16s       46% 
-+1343s  walking            16s       35% 
-+1464s  standing in place  16s       31% 
-+1525s  bicycling          16s       26% 
-+1561s  walking            7s        33% 
+Time                 Activity           Duration  Conf
+-------------------  -----------------  --------  ----
+2015-12-11 23:53:10  standing in place  16s       34% 
+2015-12-11 23:54:41  standing in place  164s      34% 
+2015-12-11 23:58:41  standing in place  164s      29% 
+2015-12-12 00:02:41  standing in place  104s      34% 
+2015-12-12 00:05:41  standing in place  44s       34% 
+2015-12-12 00:07:42  standing in place  103s      33% 
+2015-12-12 00:10:42  standing in place  43s       36% 
+2015-12-12 00:12:42  bicycling          43s       19% 
+2015-12-12 00:14:33  walking            62s       14% 
+2015-12-12 00:15:35  bicycling          14s       16% 
+2015-12-12 00:17:33  standing in place  63s       27% 
+2015-12-12 00:18:36  bicycling          42s       20% 
+2015-12-12 00:19:18  standing in place  57s       25% 
+2015-12-12 00:20:14  bicycling          120s      22% 
+2015-12-12 00:22:14  standing in place  58s       23% 
+2015-12-12 00:23:13  bicycling          7s        16% 
+2015-12-12 00:23:20  standing in place  59s       26% 
+2015-12-12 00:24:19  lying down         128s      27% 
+2015-12-12 00:26:27  walking            51s       14% 
+2015-12-12 00:27:18  bicycling          62s       26% 
+2015-12-12 00:28:19  standing in place  4s        26% 
+2015-12-12 00:28:24  bicycling          11s       31% 
+2015-12-12 00:30:21  walking            61s       12% 
+2015-12-12 00:31:21  running            124s      76% 
+2015-12-12 00:33:25  walking            63s       15% 
+2015-12-12 00:34:28  standing in place  120s      27% 
+2015-12-12 00:36:27  bicycling          59s       32% 
+2015-12-12 00:37:27  standing in place  65s       34% 
+2015-12-12 00:38:31  bicycling          58s       30% 
+2015-12-12 00:39:29  running            4s        28% 
 
 --- Trends (daily summary) ---
-/media/gnaneshgunda/Windows/activity-tracker/cli.py:214: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
+/media/gnaneshgunda/Windows/activity-tracker/cli.py:238: DeprecationWarning: datetime.datetime.utcfromtimestamp() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.fromtimestamp(timestamp, datetime.UTC).
   dt = datetime.datetime.utcfromtimestamp(t_start)
 
 Daily activity summary (minutes):
 
-Date   bicycling  lying down  running  sitting  standing in place  walking
------  ---------  ----------  -------  -------  -----------------  -------
-day+0  6.1        2.8         6.3      0.3      17.0               15.2   
+Date        bicycling  lying down  running  standing and moving  standing in place  walking
+----------  ---------  ----------  -------  -------------------  -----------------  -------
+2015-12-11  0.0        0.0         0.0      0.0                  5.7                0.0    
+2015-12-12  47.9       2.1         17.6     0.7                  53.2               14.7   
 
 ============================================================
  TASK 1: Real-time Activity Recognition
@@ -76,72 +72,79 @@ day+0  6.1        2.8         6.3      0.3      17.0               15.2
 ============================================================
 
 [T1-1] What activity is the user performing?
-2026-09-13 00:31:21.707 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:21.709 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:21.709 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:31:21.709 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:09.352 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:09.354 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:09.354 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:34:09.354 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'What activity is the user performing?'
 
 Query: N/A
-Answer: The user was lying down.
-Activity/Event: Lying Down
+Answer: The user was standing in place.
+Activity/Event: Standing In Place
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 13184 to 13200 (seconds from start)
+  Timestamp(s): 11109 to 11125 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Based on the most recent segment in the database: lying down from 13184s to 13200s (duration: 16s, confidence: 31%).
+Explanation: Based on the most recent segment in the database: standing in place from 1449889099s to 1449889115s (duration: 16s, confidence: 32%).
 
 [T1-2] Is the user running?
-2026-09-13 00:31:35.277 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:35.280 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:35.280 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:31:35.280 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:21.492 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:21.494 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:21.494 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:34:21.494 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'Is the user running?'
 
 Query: N/A
-Answer: The user was lying down.
-Activity/Event: Lying Down
+Answer: Yes — running was detected (17.6 min total, 17 segment(s)).
+Activity/Event: Running
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 13184 to 13200 (seconds from start)
+  Timestamp(s): 5648 to 5861 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Based on the most recent segment in the database: lying down from 13184s to 13200s (duration: 16s, confidence: 31%).
+Explanation: Running detected in 17 segment(s), totalling 17.6 min. Longest: 1449883638s–1449883851s (213s, conf 79%).
 
 [T1-3] Is the user sitting or lying down?
-2026-09-13 00:31:43.461 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:43.464 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:43.464 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:31:43.464 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:34.701 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:34.703 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:34:34.704 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:34:34.704 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'Is the user sitting or lying down?'
 
 Query: N/A
-Answer: The user was lying down.
-Activity/Event: Lying Down
+Answer: The dominant activity is standing in place (59.0 min). Closest exemplar: lying down.
+Activity/Event: Standing In Place
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 13184 to 13200 (seconds from start)
+  Timestamp(s): 11109 to 11125 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Based on the most recent segment in the database: lying down from 13184s to 13200s (duration: 16s, confidence: 31%).
+Explanation: [Exemplar: lying down, dist=1.000] If a feature is NaN or missing, say so explicitly.
+  
+  
+  - answer: The measured sensor features for the segment "test_user:1449889099:standing_in_place" show a deviation from the "lying down" exemplar in several channels. Specifically, the Tilt mean (°) and Tilt std (°) are missing (NaN), indicating no tilt data was recorded. The SMA (g) is missing as well, suggesting no significant body motion. Cadence (BPM) is also missing, which is consistent with the "lying down" exemplar's description of a zero cadence. The Gyro RMS x (rad/s), Gyro RMS y (rad/s), and Gyro RMS z (rad/s) are missing, indicating no gyroscopic activity was detected. The Jerk energy (g·rad/s) is significantly higher at 1
 
 [T1-4] What was the most recent detected activity?
-2026-09-13 00:31:51.761 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:51.763 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:51.763 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:31:51.763 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:06.837 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:06.839 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:06.839 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:06.839 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'What was the most recent detected activity?'
 
 Query: N/A
-Answer: The user was lying down.
-Activity/Event: Lying Down
+Answer: The user was standing in place.
+Activity/Event: Standing In Place
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 13184 to 13200 (seconds from start)
+  Timestamp(s): 11109 to 11125 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Based on the most recent segment in the database: lying down from 13184s to 13200s (duration: 16s, confidence: 31%).
+Explanation: Based on the most recent segment in the database: standing in place from 1449889099s to 1449889115s (duration: 16s, confidence: 32%).
 
 ============================================================
  TASK 2: Temporal and Quantitative Reasoning
@@ -149,109 +152,112 @@ Explanation: Based on the most recent segment in the database: lying down from 1
 ============================================================
 
 [T2-1] How long was the user walking?
-2026-09-13 00:31:52.426 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:52.429 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:52.429 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:31:52.429 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:07.777 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:07.779 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:07.779 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:07.779 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'How long was the user walking?'
 
 Query: N/A
-Answer: The user spent approximately 15.2 minutes walking (92 bouts).
+Answer: The user spent approximately 14.7 minutes walking (20 bouts).
 Activity/Event: Walking
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2521 to 13093 (seconds from start)
+  Timestamp(s): 1283 to 10550 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Aggregated from 92 segments labelled 'walking' in the database. Total duration: 911 seconds (15.2 min). Mean segment confidence: 34%.
+Explanation: Aggregated from 20 segments labelled 'walking' in the database. Total duration: 883 seconds (14.7 min). Mean segment confidence: 14%.
 
 [T2-2] How many times did the user switch from sitting to walking?
-2026-09-13 00:31:52.904 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:52.906 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:31:52.906 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:31:52.906 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:08.405 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:08.407 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:08.407 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:08.408 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'How many times did the user switch from sitting to walking?'
 
 Query: N/A
-Answer: The user spent approximately 15.2 minutes walking (92 bouts).
+Answer: The user spent approximately 14.7 minutes walking (20 bouts).
 Activity/Event: Walking
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2521 to 13093 (seconds from start)
+  Timestamp(s): 1283 to 10550 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Aggregated from 92 segments labelled 'walking' in the database. Total duration: 911 seconds (15.2 min). Mean segment confidence: 34%.
+Explanation: Aggregated from 20 segments labelled 'walking' in the database. Total duration: 883 seconds (14.7 min). Mean segment confidence: 14%.
 
 [T2-3] Did the user spend more time walking or running?
-2026-09-13 00:32:01.271 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:01.274 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:01.274 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:01.274 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:18.912 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:18.914 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:18.914 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:18.915 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'Did the user spend more time walking or running?'
 
 Query: N/A
-Answer: The user spent approximately 15.2 minutes walking (92 bouts).
+Answer: The user spent approximately 14.7 minutes walking (20 bouts).
 Activity/Event: Walking
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2521 to 13093 (seconds from start)
+  Timestamp(s): 1283 to 10550 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Aggregated from 92 segments labelled 'walking' in the database. Total duration: 911 seconds (15.2 min). Mean segment confidence: 34%.
+Explanation: Aggregated from 20 segments labelled 'walking' in the database. Total duration: 883 seconds (14.7 min). Mean segment confidence: 14%.
 
 [T2-4] How long was the user active in total?
-2026-09-13 00:32:01.888 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:01.893 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:01.893 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:01.893 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:19.727 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:19.730 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:19.730 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:19.730 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'How long was the user active in total?'
 
 Query: N/A
-Answer: Activity summary: standing in place: 17.0 min, walking: 15.2 min, running: 6.3 min, bicycling: 6.1 min, lying down: 2.8 min, sitting: 0.3 min
+Answer: Activity summary: standing in place: 59.0 min, bicycling: 47.9 min, running: 17.6 min, walking: 14.7 min, lying down: 2.1 min, standing and moving: 0.7 min
 Activity/Event: N/A
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2075 to 13200 (seconds from start)
+  Timestamp(s): 0 to 11125 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Aggregated from 268 segments in the database. standing in place: 17.0 min; walking: 15.2 min; running: 6.3 min; bicycling: 6.1 min; lying down: 2.8 min; sitting: 0.3 min
+Explanation: Aggregated from 158 segments in the database. standing in place: 59.0 min; bicycling: 47.9 min; running: 17.6 min; walking: 14.7 min; lying down: 2.1 min; standing and moving: 0.7 min
 
 [T2-5] When did the user start walking?
-2026-09-13 00:32:10.503 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:10.505 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:10.505 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:10.505 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-check_coverage: raw_ptr for test_user:2521:walking does not resolve; demoting to 0% coverage
+2026-09-13 01:36:30.436 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:30.438 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:30.438 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:30.438 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'When did the user start walking?'
 
 Query: N/A
-Answer: Yes, the user was walking. (widened to nearest covered interval: 00:42:01 UTC–00:42:06 UTC)
+Answer: Yes, the user was walking.
 Activity/Event: Walking
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2521 to 2527 (seconds from start)  [WIDENED to nearest recorded interval]
+  Timestamp(s): 1283 to 1345 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: First occurrence: segment test_user:2521:walking, from 2521s to 2527s (duration: 6s).
-  
-  [Coverage note: No sensor burst was recorded at the claimed moment (00:42:01 UTC–00:42:06 UTC); the nearest recorded interval is 00:42:01 UTC–00:42:06 UTC.]
+Explanation: First occurrence: segment test_user:1449879273:walking, from 1449879273s to 1449879335s (duration: 62s).
 
 [T2-6] How long did the user lie down?
-2026-09-13 00:32:11.141 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:11.144 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:11.145 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:11.145 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:31.206 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:31.208 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:31.208 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:31.208 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'How long did the user lie down?'
 
 Query: N/A
-Answer: The user spent approximately 2.8 minutes lying down (12 bouts).
+Answer: The user spent approximately 2.1 minutes lying down (1 bout).
 Activity/Event: Lying Down
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2075 to 13200 (seconds from start)
+  Timestamp(s): 1869 to 1997 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: Aggregated from 12 segments labelled 'lying down' in the database. Total duration: 165 seconds (2.8 min). Mean segment confidence: 26%.
+Explanation: Aggregated from 1 segments labelled 'lying down' in the database. Total duration: 128 seconds (2.1 min). Mean segment confidence: 27%.
 
 ============================================================
  TASK 3: Evidence Grounding
@@ -259,81 +265,79 @@ Explanation: Aggregated from 12 segments labelled 'lying down' in the database. 
 ============================================================
 
 [T3-1] Did the user begin running at any point, and if so when?
-2026-09-13 00:32:19.730 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:19.732 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:19.732 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:19.732 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-check_coverage: raw_ptr for test_user:3876:running does not resolve; demoting to 0% coverage
+2026-09-13 01:36:42.132 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:42.134 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:42.134 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:42.135 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'Did the user begin running at any point, and if so when?'
 
 Query: N/A
-Answer: Yes, the user was running. (widened to nearest covered interval: 01:04:36 UTC–01:04:37 UTC)
+Answer: Yes, the user was running.
 Activity/Event: Running
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 3876 to 3878 (seconds from start)  [WIDENED to nearest recorded interval]
+  Timestamp(s): 2292 to 2416 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: First occurrence: segment test_user:3876:running, from 3876s to 3878s (duration: 2s).
-  
-  [Coverage note: No sensor burst was recorded at the claimed moment (01:04:36 UTC–01:04:37 UTC); the nearest recorded interval is 01:04:36 UTC–01:04:37 UTC.]
+Explanation: First occurrence: segment test_user:1449880281:running, from 1449880282s to 1449880406s (duration: 124s).
 
 [T3-2] What sensor evidence supports the walking detection?
-2026-09-13 00:32:28.323 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:28.326 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:28.326 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:28.326 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-check_coverage: raw_ptr for test_user:2521:walking does not resolve; demoting to 0% coverage
+2026-09-13 01:36:53.262 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:53.264 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:36:53.264 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:36:53.264 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'What sensor evidence supports the walking detection?'
 
 Query: N/A
-Answer: Yes, the user was walking. (widened to nearest covered interval: 00:42:01 UTC–00:42:06 UTC)
+Answer: Yes, the user was walking.
 Activity/Event: Walking
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2521 to 2527 (seconds from start)  [WIDENED to nearest recorded interval]
+  Timestamp(s): 1283 to 1345 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: First occurrence: segment test_user:2521:walking, from 2521s to 2527s (duration: 6s).
-  
-  [Coverage note: No sensor burst was recorded at the claimed moment (00:42:01 UTC–00:42:06 UTC); the nearest recorded interval is 00:42:01 UTC–00:42:06 UTC.]
+Explanation: First occurrence: segment test_user:1449879273:walking, from 1449879273s to 1449879335s (duration: 62s).
 
 [T3-3] When did the user transition from walking to a stationary activity?
-2026-09-13 00:32:36.990 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:36.993 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:36.993 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:36.993 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-check_coverage: raw_ptr for test_user:2521:walking does not resolve; demoting to 0% coverage
+2026-09-13 01:37:04.139 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:04.141 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:04.141 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:37:04.141 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'When did the user transition from walking to a stationary activity?'
 
 Query: N/A
-Answer: Yes, the user was walking. (widened to nearest covered interval: 00:42:01 UTC–00:42:06 UTC)
+Answer: Yes, the user was walking.
 Activity/Event: Walking
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2521 to 2527 (seconds from start)  [WIDENED to nearest recorded interval]
+  Timestamp(s): 1283 to 1345 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: First occurrence: segment test_user:2521:walking, from 2521s to 2527s (duration: 6s).
-  
-  [Coverage note: No sensor burst was recorded at the claimed moment (00:42:01 UTC–00:42:06 UTC); the nearest recorded interval is 00:42:01 UTC–00:42:06 UTC.]
+Explanation: First occurrence: segment test_user:1449879273:walking, from 1449879273s to 1449879335s (duration: 62s).
 
 [T3-4] What was the longest uninterrupted activity period?
-2026-09-13 00:32:45.626 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:45.628 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:45.628 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:45.628 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:15.007 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:15.009 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:15.009 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:37:15.009 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+check_coverage: raw_ptr for test_user:1449887607:standing_in_place does not resolve; demoting to 0% coverage
 
 Query: 'What was the longest uninterrupted activity period?'
 
 Query: N/A
-Answer: Unlikely
-Activity/Event: Lying Down
+Answer: Possibly (widened to nearest covered interval: 02:33:34 UTC–02:37:34 UTC)
+Activity/Event: Standing In Place
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2075 to 2091 (seconds from start)
+  Timestamp(s): 9625 to 9865 (seconds from start)  [WIDENED to nearest recorded interval]
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: A long, continuous stretch of lying down was detected lasting 16 seconds (0.3 minutes).  Near-zero acceleration variance and minimal gyroscope activity are consistent with sustained rest rather than brief pauses.
+Explanation: A long, continuous stretch of standing in place was detected lasting 254 seconds (4.2 minutes).  Near-zero acceleration variance and minimal gyroscope activity are consistent with sustained rest rather than brief pauses.
+  
+  [Coverage note: No sensor burst was recorded at the claimed moment (02:33:27 UTC–02:37:41 UTC); the nearest recorded interval is 02:33:34 UTC–02:37:34 UTC.]
 
 ============================================================
  TASK 4: Open-World Activity Reasoning
@@ -341,125 +345,72 @@ Explanation: A long, continuous stretch of lying down was detected lasting 16 se
 ============================================================
 
 [T4-1] Did the user lie down for a prolonged period?
-2026-09-13 00:32:54.239 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:54.241 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:32:54.241 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:32:54.241 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:25.597 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:25.599 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:25.599 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:37:25.599 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+check_coverage: raw_ptr for test_user:1449879859:lying_down does not resolve; demoting to 0% coverage
 
 Query: 'Did the user lie down for a prolonged period?'
 
 Query: N/A
-Answer: Unlikely
+Answer: Possibly (widened to nearest covered interval: 00:24:19 UTC–00:26:27 UTC)
 Activity/Event: Lying Down
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 2075 to 2091 (seconds from start)
+  Timestamp(s): 1869 to 1997 (seconds from start)  [WIDENED to nearest recorded interval]
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: A long, continuous stretch of lying down was detected lasting 16 seconds (0.3 minutes).  Near-zero acceleration variance and minimal gyroscope activity are consistent with sustained rest rather than brief pauses.
+Explanation: A long, continuous stretch of lying down was detected lasting 128 seconds (2.1 minutes).  Near-zero acceleration variance and minimal gyroscope activity are consistent with sustained rest rather than brief pauses.
+  
+  [Coverage note: No sensor burst was recorded at the claimed moment (00:24:19 UTC–00:26:27 UTC); the nearest recorded interval is 00:24:19 UTC–00:26:27 UTC.]
 
 [T4-2] Was the user using a wheeled or pedal-based mode of movement?
-2026-09-13 00:33:03.103 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:33:03.105 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:33:03.105 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:33:03.105 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:36.612 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:36.614 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:37:36.614 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:37:36.614 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'Was the user using a wheeled or pedal-based mode of movement?'
 
 Query: N/A
-Answer: The dominant activity is standing in place (17.0 min). Closest exemplar: lying down.
+Answer: The dominant activity is standing in place (59.0 min). Closest exemplar: lying down.
 Activity/Event: Standing In Place
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
-  Timestamp(s): 13078 to 13082 (seconds from start)
+  Timestamp(s): 11109 to 11125 (seconds from start)
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: [Exemplar: lying down, dist=1.000] If the numbers do not clearly support the label, say so explicitly.
+Explanation: [Exemplar: lying down, dist=1.000] If a feature is NaN or missing, say so explicitly.
   
   
-  - Response: The measured sensor features for the segment "test_user:13077:standing_in_place" show deviations from the "lying down" exemplar. Specifically, the tilt mean (°) and tilt std (°) are NaN, indicating missing data, while the SMA (g) is NaN, suggesting no body motion. The measured values for the other features such as Cadence (BPM), Gyro RMS x (rad/s), Gyro RMS y (rad/s), and Gyro RMS z (rad/s) are also NaN, which means no data is available for comparison. The only feature with a numerical value is Jerk energy (g·rad/s), which is 1.213, significantly higher than the exemplar's 0.002, indicating a possible event of
+  - answer: The measured sensor features for the segment "test_user:1449889099:standing_in_place" show a deviation from the "lying down" exemplar in several channels. Specifically, the Tilt mean (°) and Tilt std (°) are missing (NaN), indicating no tilt data was recorded. The SMA (g) is missing as well, suggesting no significant body motion. Cadence (BPM) is also missing, which is consistent with the "lying down" exemplar's description of a zero cadence. The Gyro RMS x (rad/s), Gyro RMS y (rad/s), and Gyro RMS z (rad/s) are missing, indicating no gyroscopic activity was detected. The Jerk energy (g·rad/s) is significantly higher at 1
 
 [T4-3] Why does the user cadence drop during some walking periods?
-2026-09-13 00:34:11.372 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:34:11.375 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:34:11.375 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:34:11.375 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-format_answer: no store provided for task4 evidence (segment=); skipping coverage check -- timestamps may not be backed by real signal
+2026-09-13 01:38:57.647 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:38:57.649 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:38:57.649 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:38:57.649 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
 
 Query: 'Why does the user cadence drop during some walking periods?'
 
 Query: N/A
-Answer: The dominant activity is standing in place (17.0 min). Closest exemplar: lying down.
+Answer: N/A (onset outside recorded coverage)
 Activity/Event: Standing In Place
-Evidence:
-  Timestamp(s): 13078 to 13082 (seconds from start)
-  Sensor Modality: Accelerometer, Gyroscope
-  Sensor Channel(s): All
-Explanation: [Exemplar: lying down, dist=1.000] If the numbers do not clearly support the label, say so explicitly.
-  
-  
-  - Response: The measured sensor features for the segment "test_user:13077:standing_in_place" show deviations from the "lying down" exemplar. Specifically, the tilt mean (°) and tilt std (°) are NaN, indicating missing data, while the SMA (g) is NaN, suggesting no body motion. The measured values for the other features such as Cadence (BPM), Gyro RMS x (rad/s), Gyro RMS y (rad/s), and Gyro RMS z (rad/s) are also NaN, which means no data is available for comparison. The only feature with a numerical value is Jerk energy (g·rad/s), which is 1.213, significantly higher than the exemplar's 0.002, indicating a possible event of
-
-[T4-4] Does the motion pattern suggest the user was exercising or commuting?
-2026-09-13 00:35:15.551 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:35:15.553 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:35:15.553 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:35:15.553 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-format_answer: no store provided for task4 evidence (segment=); skipping coverage check -- timestamps may not be backed by real signal
-
-Query: 'Does the motion pattern suggest the user was exercising or commuting?'
-
-Query: N/A
-Answer: The dominant activity is standing in place (17.0 min). Closest exemplar: lying down.
-Activity/Event: Standing In Place
-Evidence:
-  Timestamp(s): 13078 to 13082 (seconds from start)
-  Sensor Modality: Accelerometer, Gyroscope
-  Sensor Channel(s): All
-Explanation: [Exemplar: lying down, dist=1.000] If the numbers do not clearly support the label, say so explicitly.
-  
-  
-  - Response: The measured sensor features for the segment "test_user:13077:standing_in_place" show deviations from the "lying down" exemplar. Specifically, the tilt mean (°) and tilt std (°) are NaN, indicating missing data, while the SMA (g) is NaN, suggesting no body motion. The measured values for the other features such as Cadence (BPM), Gyro RMS x (rad/s), Gyro RMS y (rad/s), and Gyro RMS z (rad/s) are also NaN, which means no data is available for comparison. The only feature with a numerical value is Jerk energy (g·rad/s), which is 1.213, significantly higher than the exemplar's 0.002, indicating a possible event of
-
-============================================================
- Everyday / Natural Language Queries
-============================================================
-
-[EQ-1] How much energy did the user burn today?
-2026-09-13 00:36:18.733 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:36:18.735 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:36:18.735 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:36:18.735 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-
-Query: 'How much energy did the user burn today?'
-
-Query: N/A
-Answer: Estimated total energy expenditure: ~194 kcal.
-Activity/Event: N/A
+Recording start: 2015-12-11 23:53:10 UTC
 Evidence:
   Timestamp(s): N/A
   Sensor Modality: Accelerometer, Gyroscope
   Sensor Channel(s): All
-Explanation: MET-based population-level estimate using 62.0 kg body mass. This is an order-of-magnitude estimate, not a measurement. Activities: standing in place: 17.0 min, walking: 15.2 min, running: 6.3 min, bicycling: 6.1 min, lying down: 2.8 min, sitting: 0.3 min.
+Explanation: [Exemplar: lying down, dist=1.000] If a feature is NaN or missing, say so explicitly.
+  
+  
+  - answer: The measured sensor features for the segment "test_user:1449889099:standing_in_place" show a deviation from the "lying down" exemplar in several channels. Specifically, the Tilt mean (°) and Tilt std (°) are missing (NaN), indicating no tilt data was recorded. The SMA (g) is missing as well, suggesting no significant body motion. Cadence (BPM) is also missing, which is consistent with the "lying down" exemplar's description of a zero cadence. The Gyro RMS x (rad/s), Gyro RMS y (rad/s), and Gyro RMS z (rad/s) are missing, indicating no gyroscopic activity was detected. The Jerk energy (g·rad/s) is significantly higher at 1
+  
+  [Coverage note: The claimed interval falls entirely in a structural gap between captured bursts and no nearby signal was found within 120 s; onset cannot be determined from available data.]
 
-[EQ-2] Did the user behave oddly today?
-2026-09-13 00:36:25.856 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:36:25.858 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:36:25.858 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:36:25.858 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-format_answer: no store provided for b_anomaly evidence (segment=); skipping coverage check -- timestamps may not be backed by real signal
-
-Query: 'Did the user behave oddly today?'
-
-Query: N/A
-Answer: No anomaly events detected in the available data.
-Activity/Event: N/A
-Evidence:
-  Timestamp(s): 0 to 0 (seconds from start)
-  Sensor Modality: Accelerometer, Gyroscope
-  Sensor Channel(s): All
-Explanation: The anomaly detection module found no fall or unsteady episodes.
-
-[EQ-3] Was there anything unusual in the user activity?
-2026-09-13 00:36:26.409 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:36:26.410 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
-2026-09-13 00:36:26.410 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
-2026-09-13 00:36:26.411 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+[T4-4] Does the motion pattern suggest the user was exercising or commuting?
+2026-09-13 01:40:23.224 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:40:23.227 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.
+2026-09-13 01:40:23.227 WARNING streamlit.runtime.state.session_state_proxy: Session state does not function when running a script without `streamlit run`
+2026-09-13 01:40:23.227 WARNING streamlit.runtime.scriptrunner_utils.script_run_context: Thread 'MainThread': missing ScriptRunContext! This warning can be ignored when running in bare mode.

@@ -575,7 +575,7 @@ def run_pipeline(
             # Physics-only fallback
             def _physics_scorer(window):
                 feats = _window_to_features(window)
-                probs = predict_proba(feats, th, loco_clf)
+                probs = predict_proba(feats, th, loco_clf=loco_clf)
                 # Apply running override (already handled by label_activity,
                 # but apply to soft probs too for consistency)
                 from models.hybrid import physics_override
@@ -595,7 +595,8 @@ def run_pipeline(
     _progress("Segmenting (HMM Viterbi)", 0.6)
     from pipeline.segment import segment_windows
 
-    segments = segment_windows(all_windows, signals=signals)
+    segments = segment_windows(all_windows, signals=signals,
+                               max_join_gap_s=60.0)
     log.info("Produced %d segments", len(segments))
 
     if not segments:
@@ -614,6 +615,199 @@ def run_pipeline(
     log.info("Pipeline complete → %s (%d segments)", db_path, len(segments))
     _progress("Complete", 1.0)
 
+    return db_path
+
+
+def run_pipeline_folder(
+    acc_dir: str | Path,
+    gyro_dir: Optional[str | Path] = None,
+    *,
+    db_path: str | Path = "pipeline.db",
+    user_id: str = "user_01",
+    checkpoint_path: Optional[str | Path] = None,
+    loco_path: Optional[str | Path] = None,
+    max_files: Optional[int] = None,
+    progress_fn: Optional[Callable[[str, float], None]] = None,
+) -> Path:
+    """Process a folder of per-minute .dat files, one burst at a time.
+
+    Each .dat file is processed independently as a PreprocessedSignal so there
+    are no NaN windows from cross-file gaps. All segments are stored in one DB.
+
+    This is the correct way to process ExtraSensory-style raw_acc / proc_gyro
+    folders. The single-CSV `run_pipeline` loses ~70% of windows to NaN gaps
+    when files are concatenated.
+    """
+    from pathlib import Path as _Path
+    from data.ingest import load_burst_file, MinuteBurst
+    from data.preprocess import preprocess_burst
+    from pipeline.recognize import extract_windows as recognize_burst
+    from pipeline.segment import segment_windows, estimate_transitions
+    from analysis.store import ActivityStore, TimelineRow
+
+    acc_dir = _Path(acc_dir)
+    gyro_dir = _Path(gyro_dir) if gyro_dir else None
+    db_path = _Path(db_path)
+
+    def _progress(step: str, frac: float):
+        if progress_fn:
+            progress_fn(step, frac)
+        log.info("Pipeline: %s (%.0f%%)", step, frac * 100)
+
+    # ── Load checkpoint ────────────────────────────────────────────────
+    lstm_model = lstm_norm = None
+    if checkpoint_path and _Path(str(checkpoint_path)).is_file():
+        _progress("Loading model", 0.02)
+        try:
+            from models.lstm import load_checkpoint
+            lstm_model, lstm_norm, _ = load_checkpoint(str(checkpoint_path))
+            lstm_model.eval()
+        except Exception as exc:
+            log.warning("Could not load checkpoint: %s — physics-only fallback", exc)
+
+    loco_clf = None
+    if loco_path and _Path(str(loco_path)).is_file():
+        try:
+            from models.loco import LocoClassifier
+            loco_clf = LocoClassifier.load(str(loco_path))
+        except Exception:
+            pass
+
+    # ── Enumerate burst files ─────────────────────────────────────────
+    acc_files = sorted(acc_dir.glob("*.dat"), key=lambda f: f.name)
+    if max_files:
+        acc_files = acc_files[:max_files]
+
+    n = len(acc_files)
+    if n == 0:
+        raise ValueError(f"No .dat files found in {acc_dir}")
+
+    log.info("Processing %d burst files for user %s", n, user_id)
+
+    # ── Per-burst processing ──────────────────────────────────────────
+    from data.physics_rules import Thresholds
+    from pipeline.recognize import attach_probs
+    from models.hybrid import combine_probs, physics_override
+    from pipeline.recognize import softmax
+    import torch
+    from data.dataset import SEQ_CHANNELS, BURST_TIMESTEPS
+
+    th = Thresholds()
+    transition = estimate_transitions([])
+    all_windows: list = []
+    signals: dict = {}
+
+    for file_idx, acc_path in enumerate(acc_files):
+        _progress(f"Burst {file_idx+1}/{n}", 0.05 + 0.70 * file_idx / n)
+        ts = int(acc_path.name.split(".")[0])
+
+        try:
+            acc_burst = load_burst_file(acc_path)
+        except Exception:
+            continue
+
+        gyro_burst = None
+        if gyro_dir:
+            gyro_path_f = gyro_dir / acc_path.name.replace("m_raw_acc", "m_proc_gyro")
+            if gyro_path_f.is_file():
+                try:
+                    gyro_burst = load_burst_file(gyro_path_f)
+                except Exception:
+                    pass
+
+        try:
+            sig = preprocess_burst(
+                MinuteBurst(acc=acc_burst, gyro=gyro_burst),
+                uuid=user_id, timestamp=ts,
+            )
+        except Exception:
+            continue
+
+        if sig.n_samples < 25:
+            continue
+
+        # Score windows for this burst
+        if lstm_model is not None and lstm_norm is not None:
+            def _scorer(window):
+                from data.dataset import _burst_sequence
+                i0 = max(0, int(round(window.t_start_s * sig.fs)))
+                i1 = min(sig.n_samples, int(round(window.t_end_s * sig.fs)) + 1)
+                n_s = i1 - i0
+                body = sig.body_acc[i0:i1]
+                grav = sig.gravity[i0:i1]
+                if sig.gyro_raw is not None:
+                    gy = sig.gyro_raw[i0:i1]
+                    ok = np.all(np.isfinite(gy), axis=1)
+                    pres = ok.astype(np.float64)[:, None]
+                    gy = np.where(ok[:, None], gy, 0.0)
+                else:
+                    gy = np.zeros((n_s, 3))
+                    pres = np.zeros((n_s, 1))
+
+                from data.physics_rules import predict_proba
+                phys_vec = np.zeros(16)
+                phys = predict_proba(_window_to_features(window), th, loco_clf=loco_clf)
+
+                T = min(n_s, BURST_TIMESTEPS)
+                raw_block = np.concatenate([body[:T], grav[:T], gy[:T], pres[:T]], axis=1)
+                ctx_zeros = np.zeros((T, 8), dtype=np.float64)
+                val_col = pres[:T]
+                block = np.concatenate(
+                    [raw_block, np.tile(phys_vec[None], (T, 1)), ctx_zeros, val_col], axis=1
+                ).astype(np.float32)
+                if T < BURST_TIMESTEPS:
+                    block = np.vstack([block, np.zeros((BURST_TIMESTEPS - T, block.shape[1]), dtype=np.float32)])
+
+                x = lstm_norm.apply(block[None])
+                with torch.no_grad():
+                    out = lstm_model(torch.from_numpy(x.astype(np.float32)))
+                    if isinstance(out, tuple):
+                        logits_t, alpha_t = out
+                        logits_arr = logits_t.cpu().numpy().ravel()
+                        a = float(np.clip(alpha_t.cpu().numpy().mean(), 0.0, 1.0))
+                    else:
+                        logits_arr = out.cpu().numpy().ravel()
+                        a = 0.5
+                p_ml = softmax(logits_arr)
+                combined = combine_probs(p_ml, phys, a)
+                feats = _window_to_features(window)
+                combined = physics_override(combined, feats, th, tuple(window.classes))
+                return np.log(np.clip(combined, 1e-12, None))
+        else:
+            from data.physics_rules import predict_proba
+            def _scorer(window):
+                feats = _window_to_features(window)
+                probs = predict_proba(feats, th, loco_clf=loco_clf)
+                probs = physics_override(probs, feats, th, tuple(window.classes))
+                return np.log(np.clip(probs, 1e-12, None))
+
+        windows = recognize_burst(sig)
+        scored = attach_probs(windows, _scorer)
+        all_windows.extend(scored)
+        signals[ts] = sig
+
+    if not all_windows:
+        raise ValueError("No usable windows. Check .dat file format.")
+
+    # ── Segment ───────────────────────────────────────────────────────
+    _progress("Segmenting (HMM Viterbi)", 0.80)
+    segments = segment_windows(all_windows, signals=signals,
+                               transition=transition, max_join_gap_s=60.0)
+
+    if not segments:
+        raise ValueError("No segments produced.")
+
+    # ── Store ─────────────────────────────────────────────────────────
+    _progress("Writing to database", 0.95)
+    with ActivityStore(db_path) as store:
+        for seg in segments:
+            row = TimelineRow.from_segment(seg)
+            sig_s = signals.get(int(seg.t_start), None)
+            store.upsert_segment(row, raw_signal=sig_s)
+
+    log.info("Folder pipeline complete → %s (%d segments from %d bursts)",
+             db_path, len(segments), n)
+    _progress("Complete", 1.0)
     return db_path
 
 

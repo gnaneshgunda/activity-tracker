@@ -532,13 +532,65 @@ def _auto_query(store, task: str, question: str) -> dict:
 
 
 def _query_task1(rows, question: str) -> dict:
-    """Task 1: Activity look-up. Find what the user was doing at a given time."""
-    # Try to find a time reference in the question.
-    # For now, return the latest segment's label.
+    """Task 1: Activity look-up — what is/was the user doing."""
+    import re
     if not rows:
         return {"answer": "No data available.", "confidence": 0.0, "explanation": "", "label": ""}
 
-    # Use the most recent segment as default.
+    q_lower = question.lower()
+
+    # Label aliases — map question keywords to class names
+    LABEL_ALIASES = {
+        "run": "running", "running": "running", "jog": "running",
+        "walk": "walking", "walking": "walking",
+        "bik": "bicycling", "cycl": "bicycling", "bicycle": "bicycling",
+        "sit": "sitting", "sitting": "sitting", "seat": "sitting",
+        "lie": "lying down", "lay": "lying down", "lying": "lying down", "sleep": "lying down",
+        "stand": "standing in place", "standing": "standing in place",
+    }
+
+    # Check if question targets a specific activity
+    target_label = None
+    for kw, label in LABEL_ALIASES.items():
+        if kw in q_lower:
+            target_label = label
+            break
+
+    # "Is the user running?" / "Did they run?" → look for that activity
+    if target_label:
+        matching = [r for r in rows if r.label == target_label]
+        if matching:
+            # Return the longest matching segment (most confident occurrence)
+            seg = max(matching, key=lambda r: r.t_end - r.t_start)
+            total_min = sum(r.t_end - r.t_start for r in matching) / 60.0
+            return {
+                "answer": f"Yes — {target_label} was detected ({total_min:.1f} min total, "
+                          f"{len(matching)} segment(s)).",
+                "confidence": seg.confidence,
+                "explanation": (
+                    f"{target_label.capitalize()} detected in {len(matching)} segment(s), "
+                    f"totalling {total_min:.1f} min. "
+                    f"Longest: {seg.t_start:.0f}s–{seg.t_end:.0f}s "
+                    f"({seg.t_end-seg.t_start:.0f}s, conf {seg.confidence:.0%})."
+                ),
+                "label": target_label,
+                "t_start": seg.t_start,
+                "t_end": seg.t_end,
+            }
+        else:
+            # Activity not found in data
+            all_labels = list({r.label for r in rows})
+            return {
+                "answer": f"No — {target_label} was not detected in the recording.",
+                "confidence": 0.85,
+                "explanation": (
+                    f"No segments labelled '{target_label}' found. "
+                    f"Detected activities: {', '.join(sorted(all_labels))}."
+                ),
+                "label": "",
+            }
+
+    # No specific activity — return most recent segment
     latest = max(rows, key=lambda r: r.t_start)
     return {
         "answer": f"The user was {latest.label}.",

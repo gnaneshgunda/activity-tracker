@@ -110,7 +110,10 @@ def _resolve_sensor_path(path_str, max_files=None):
 # ── process ──────────────────────────────────────────────────────────────────
 
 def cmd_process(args):
-    from run_pipeline import run_pipeline
+    from pathlib import Path
+
+    acc_is_dir  = Path(args.acc).is_dir()
+    gyro_is_dir = args.gyro and Path(args.gyro).is_dir()
 
     print(f"Processing data for user: {args.user}")
     print(f"  acc  : {args.acc}")
@@ -118,18 +121,34 @@ def cmd_process(args):
     print(f"  db   : {args.db}")
     print()
 
-    acc_path  = _resolve_sensor_path(args.acc, max_files=args.max_files)
-    gyro_path = _resolve_sensor_path(args.gyro, max_files=args.max_files) if args.gyro else None
+    if acc_is_dir:
+        # Per-burst mode — processes each .dat file independently (no gap NaNs)
+        from run_pipeline import run_pipeline_folder
+        db_path = run_pipeline_folder(
+            acc_dir=args.acc,
+            gyro_dir=args.gyro if gyro_is_dir else None,
+            db_path=args.db,
+            user_id=args.user,
+            checkpoint_path=args.checkpoint,
+            loco_path=args.loco,
+            max_files=args.max_files,
+            progress_fn=_progress,
+        )
+    else:
+        # Single CSV mode
+        from run_pipeline import run_pipeline
+        acc_path  = _resolve_sensor_path(args.acc, max_files=args.max_files)
+        gyro_path = _resolve_sensor_path(args.gyro, max_files=args.max_files) if args.gyro else None
+        db_path = run_pipeline(
+            acc_csv=acc_path,
+            gyro_csv=gyro_path,
+            db_path=args.db,
+            user_id=args.user,
+            checkpoint_path=args.checkpoint,
+            loco_path=args.loco,
+            progress_fn=_progress,
+        )
 
-    db_path = run_pipeline(
-        acc_csv=acc_path,
-        gyro_csv=gyro_path,
-        db_path=args.db,
-        user_id=args.user,
-        checkpoint_path=args.checkpoint,
-        loco_path=args.loco,
-        progress_fn=_progress,
-    )
     print(f"\nDone. Results in: {db_path}")
 
 
@@ -154,9 +173,14 @@ def cmd_ask(args):
     from app import _auto_query
     evidence = _auto_query(store, task, question)
 
-    # Step 3: format
-    seg_id = evidence.get("segment_id")
-    formatted = format_answer(task, evidence, store if seg_id else None)
+    # Step 3: format — inject recording_start_t so timestamps show as relative offsets
+    import sqlite3 as _sq
+    con = _sq.connect(args.db)
+    t_min = con.execute("SELECT MIN(t_start) FROM timeline").fetchone()[0]
+    con.close()
+    formatted = format_answer(task, evidence, store)
+    if t_min and formatted.recording_start_t is None:
+        formatted.recording_start_t = float(t_min)
 
     # Step 4: render
     print(render_text(formatted))

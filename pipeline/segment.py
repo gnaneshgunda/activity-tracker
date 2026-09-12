@@ -724,6 +724,10 @@ def segment_windows(
     if hop_s is None:
         hop_s = _infer_hop_s(ordered)
     k = max(1, int(round(min_duration_s / hop_s))) if hop_s > 0 else 1
+    # Enforce at least 3 consecutive windows (6s at hop=2s) before a state
+    # is committed. This kills single-window noise spikes without raising
+    # min_duration_s which would prevent detecting short real activities.
+    k = max(k, 3)
 
     log_A = transition.log_matrix()
     # Precompute generator matrix for time-aware transitions.
