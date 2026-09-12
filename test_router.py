@@ -94,6 +94,7 @@ class TestPerRouteCoverage:
         ("How long did she walk today?", Route.TASK2),
         ("What is the total duration of her sitting?", Route.TASK2),
         ("What is the daily average walking time?", Route.TASK2),
+        ("How many days of data do you have?", Route.TASK2),
         ("Show me the trend over the past week", Route.TASK2),
         # TASK3 — grounding / onset
         ("When did she start running?", Route.TASK3),

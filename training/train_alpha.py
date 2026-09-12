@@ -99,6 +99,7 @@ def main() -> None:
         cfg,
         model=resume_model,
         start_epoch=resume_epoch,
+        checkpoint_path=args.out,
     )
 
     test_metrics = evaluate(

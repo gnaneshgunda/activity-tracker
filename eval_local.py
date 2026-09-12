@@ -125,12 +125,15 @@ def load_user(path):
 
 
 def split_users(uuids, seed=42):
-    rng = np.random.default_rng(seed)
-    arr = np.array(sorted(uuids))
-    rng.shuffle(arr)
-    n = len(arr)
-    t1, t2 = int(0.6 * n), int(0.8 * n)
-    return arr[:t1].tolist(), arr[t1:t2].tolist(), arr[t2:].tolist()
+    """User-disjoint 60/20/20 split, identical to data.dataset.split_users.
+
+    Both eval_local.py and the training pipeline use this function with seed=42
+    so metrics are always evaluated on the same held-out test users.
+    Confirmed user-disjoint: Train∩Test=0, Val∩Test=0, Train∩Val=0.
+    """
+    from data.dataset import split_users as _ds_split, list_uuids
+    plan = _ds_split(list_uuids(LABELS_DIR), seed=seed)
+    return plan.train, plan.val, plan.test
 
 
 def macro_f1_report(confusion, classes):

@@ -73,6 +73,7 @@ def main() -> None:
         sets["train"], sets["val"], norm, cfg,
         model=resume_model,
         start_epoch=resume_epoch,
+        checkpoint_path=args.out,
     )
 
     test_metrics = evaluate(

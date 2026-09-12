@@ -413,13 +413,19 @@ def format_answer(
 
     # ---- Task 1 / 2 / B_ENERGY / PERSONALIZATION / UNKNOWN ----------------
     if task not in _COVERAGE_CHECKED_TASKS:
+        # Still surface t_start / t_end if the backend supplied them
+        # (e.g. TASK2 aggregation knows the time range of its segments).
+        ev_t_start = evidence.get("t_start")
+        ev_t_end = evidence.get("t_end")
+        ev_t_start = float(ev_t_start) if ev_t_start is not None else None
+        ev_t_end = float(ev_t_end) if ev_t_end is not None else None
         return FormattedAnswer(
             task=task,
             answer=answer_str,
             confidence=confidence,
             explanation=explanation_str,
-            evidence_t_start=None,
-            evidence_t_end=None,
+            evidence_t_start=ev_t_start,
+            evidence_t_end=ev_t_end,
             coverage_fraction=None,
             widened=False,
             raw_ptr_valid=True,

@@ -20,6 +20,8 @@ htmlcov/
 
 # Pipeline runtime outputs
 *.db
+*.db-shm
+*.db-wal
 arrays/
 *.npy
 
@@ -32,7 +34,13 @@ arrays/
 *.gguf
 models/weights/
 
-# Training logs (checkpoints/*.pt remain tracked)
+# Checkpoints and training reports (large, regeneratable)
+checkpoints/*.pt
+checkpoints/*.json
+checkpoints/*.log
+checkpoints/*.npz
+
+# Training logs
 checkpoints/*.log
 
 # Streamlit secrets

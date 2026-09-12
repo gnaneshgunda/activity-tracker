@@ -64,6 +64,10 @@ __all__ = [
     "CUSUM_RADIUS_S",
     "build_prior_transitions",
     "estimate_transitions",
+    "fit_temperature",
+    "calibrate_emissions",
+    "generator_matrix",
+    "transition_for_dt",
     "viterbi_k_min",
     "cusum_refine",
     "segment_windows",
@@ -320,8 +324,164 @@ def estimate_transitions(
 
 
 # --------------------------------------------------------------------------
+# Temperature scaling (probability calibration)
+# --------------------------------------------------------------------------
+
+
+def fit_temperature(
+    probs: np.ndarray,
+    labels: np.ndarray,
+    *,
+    grid: Optional[Sequence[float]] = None,
+) -> float:
+    """Find the temperature T that maximises log-likelihood on validation data.
+
+    Temperature scaling is a single-scalar calibration: divide log-probs by T
+    before the Viterbi step so overconfident distributions are flattened.
+    T > 1 softens (spreads mass toward uniform), T < 1 sharpens.
+
+    Why this matters here: an LSTM trained with focal loss on imbalanced data
+    tends to be overconfident on the majority classes (sitting, lying). Viterbi
+    treats classifier outputs as likelihoods — overconfident majority-class
+    emissions dominate the transition prior and override correct minority-class
+    predictions. Calibration fixes this at no training cost.
+
+    Parameters
+    ----------
+    probs:
+        ``(N, n_classes)`` softmax probabilities from the classifier on a
+        held-out validation split (never the training set).
+    labels:
+        ``(N,)`` integer ground-truth class indices.
+    grid:
+        Temperature candidates to try. Defaults to 21 values in [0.5, 2.0].
+
+    Returns
+    -------
+    float
+        Best temperature scalar. 1.0 = no change.
+    """
+    if grid is None:
+        grid = list(np.linspace(0.5, 2.0, 31))
+
+    p = np.clip(np.asarray(probs, dtype=np.float64), 1e-12, None)
+    y = np.asarray(labels, dtype=np.int64)
+    log_p = np.log(p)  # (N, C)
+
+    best_T, best_nll = 1.0, np.inf
+    for T in grid:
+        T = float(T)
+        # temperature-scaled log-probs, then re-normalise via log-sum-exp
+        scaled = log_p / T
+        lse = scaled - (np.log(np.exp(scaled - scaled.max(axis=1, keepdims=True))
+                               .sum(axis=1, keepdims=True))
+                        + scaled.max(axis=1, keepdims=True))
+        nll = float(-lse[np.arange(len(y)), y].mean())
+        if nll < best_nll:
+            best_nll, best_T = nll, T
+    return best_T
+
+
+def calibrate_emissions(
+    log_emissions: np.ndarray,
+    temperature: float,
+) -> np.ndarray:
+    """Apply temperature scaling to log-emission matrix before Viterbi.
+
+    Parameters
+    ----------
+    log_emissions:
+        ``(T, S)`` raw log emission probabilities from B2 window scoring.
+    temperature:
+        Scalar from :func:`fit_temperature`. 1.0 = identity.
+
+    Returns
+    -------
+    ``(T, S)`` calibrated log probabilities (re-normalised so each row sums
+    to 0 in log-space, i.e. the row is a valid log-probability distribution).
+    """
+    if abs(temperature - 1.0) < 1e-9:
+        return log_emissions
+    T = max(float(temperature), 1e-6)
+    scaled = np.asarray(log_emissions, dtype=np.float64) / T
+    # Re-normalise row-wise: subtract log-sum-exp so rows integrate to 1.
+    lse = np.log(np.exp(scaled - scaled.max(axis=1, keepdims=True))
+                 .sum(axis=1, keepdims=True)) + scaled.max(axis=1, keepdims=True)
+    return scaled - lse
+
+
+# --------------------------------------------------------------------------
 # Viterbi with a k-minimum-consecutive-states constraint
 # --------------------------------------------------------------------------
+
+
+def generator_matrix(transition: np.ndarray, *, dt: float = 1.0) -> np.ndarray:
+    """Estimate the CTMC generator matrix Q from a discrete transition matrix A.
+
+    A discrete step matrix A (for step size ``dt``) corresponds to a generator
+    Q = log(A) / dt in the matrix-logarithm sense. For row-stochastic A this
+    gives Q with negative diagonal and non-negative off-diagonal (approximately),
+    satisfying Q·1 = 0.
+
+    We use eigendecomposition for stability:
+        Q = V · diag(log(λ)/dt) · V⁻¹
+
+    Negative eigenvalues of A (which arise from near-zero rows) are clamped to
+    a small positive value rather than producing complex logarithms.
+
+    Parameters
+    ----------
+    transition:
+        ``(S, S)`` row-stochastic transition matrix estimated from data.
+    dt:
+        The time step in seconds that ``transition`` was estimated for. The
+        generator is scaled so that ``expm(Q * dt) ≈ transition``.
+
+    Returns
+    -------
+    ``(S, S)`` generator matrix Q (real-valued).
+    """
+    A = np.asarray(transition, dtype=np.float64)
+    S = A.shape[0]
+    try:
+        eigvals, V = np.linalg.eig(A)
+        # Clamp eigenvalues: log of negative/zero is undefined; small positives
+        # produce large negative log which corresponds to fast decay (safe).
+        eigvals_clamped = np.where(eigvals.real > 1e-12, eigvals.real, 1e-12)
+        log_eig = np.log(eigvals_clamped) / dt
+        Q = (V * log_eig[None, :]) @ np.linalg.inv(V)
+        return Q.real
+    except np.linalg.LinAlgError:
+        # Fallback: finite-difference approximation Q ≈ (A - I) / dt
+        return (A - np.eye(S)) / dt
+
+
+def transition_for_dt(Q: np.ndarray, dt: float) -> np.ndarray:
+    """Row-stochastic transition matrix for elapsed time ``dt`` seconds.
+
+    Computes ``expm(Q * dt)`` via eigendecomposition and clips to [ε, 1]
+    before row-normalising so the result is always a valid probability matrix.
+
+    For very large ``dt``, ``expm(Q * dt)`` approaches the stationary
+    distribution — every row converges to the same vector. This is exactly
+    the right behaviour: after a long gap (e.g. overnight) the activity
+    distribution is unrelated to what came before.
+
+    Parameters
+    ----------
+    Q:
+        ``(S, S)`` generator matrix from :func:`generator_matrix`.
+    dt:
+        Elapsed time in seconds.
+
+    Returns
+    -------
+    ``(S, S)`` row-stochastic matrix.
+    """
+    from scipy.linalg import expm as _expm
+    M = _expm(Q * float(dt))
+    M = np.clip(M.real, 1e-300, None)
+    return M / M.sum(axis=1, keepdims=True)
 
 
 def viterbi_k_min(
@@ -331,6 +491,7 @@ def viterbi_k_min(
     k: int = 1,
     log_initial: Optional[np.ndarray] = None,
     allow_short_final_run: bool = True,
+    log_transitions_seq: Optional[Sequence[np.ndarray]] = None,
 ) -> np.ndarray:
     """Viterbi decode under a k-minimum-consecutive-states constraint.
 
@@ -339,32 +500,31 @@ def viterbi_k_min(
     log_emissions:
         ``(T, S)`` log emission probability of each observation under each state.
     log_transitions:
-        ``(S, S)`` log transition probabilities, row-stochastic in linear space.
+        ``(S, S)`` log transition probabilities, used at every step unless
+        ``log_transitions_seq`` is provided.
     k:
-        Minimum number of consecutive steps a state must be held. ``k <= 1``
-        reduces to ordinary Viterbi.
+        Minimum number of consecutive steps a state must be held.
+    log_initial:
+        ``(S,)`` log initial state distribution. Defaults to uniform.
     allow_short_final_run:
-        If True the path may end mid-run, because the observation sequence
-        ending is a coverage boundary rather than a decoder blip. If False the
-        final run must also reach length ``k``.
-
-    Implementation: the lattice is expanded to ``(state, phase)`` where phase
-    counts how far a run has matured, capped at ``k - 1``. From phase ``< k-1``
-    the only legal move is to stay in the same state and advance the phase; from
-    phase ``k-1`` the path may stay or switch to any other state at phase 0.
-    Short runs are therefore unreachable rather than post-filtered.
+        If True the path may end mid-run (coverage boundary, not a blip).
+    log_transitions_seq:
+        Optional list of ``T-1`` per-step ``(S, S)`` log transition matrices.
+        Step ``t`` uses ``log_transitions_seq[t-1]`` instead of the global
+        matrix. Enables time-aware transitions where the matrix is computed
+        from actual Δt between windows.
     """
     E = np.asarray(log_emissions, dtype=np.float64)
-    A = np.asarray(log_transitions, dtype=np.float64)
+    A_global = np.asarray(log_transitions, dtype=np.float64)
     if E.ndim != 2:
         raise ValueError(f"log_emissions must be (T, S), got {E.shape}")
     T, S = E.shape
-    if A.shape != (S, S):
-        raise ValueError(f"log_transitions must be {(S, S)}, got {A.shape}")
+    if A_global.shape != (S, S):
+        raise ValueError(f"log_transitions must be {(S, S)}, got {A_global.shape}")
     if T == 0:
         return np.zeros(0, dtype=int)
     k = max(1, int(k))
-    P = k  # number of phases: 0 .. k-1
+    P = k
 
     if log_initial is None:
         log_initial = np.full(S, -math.log(S))
@@ -376,6 +536,9 @@ def viterbi_k_min(
     back = np.full((T, S, P, 2), -1, dtype=np.int32)
 
     for t in range(1, T):
+        # Use per-step matrix if provided (time-aware), else global matrix
+        A = (np.asarray(log_transitions_seq[t - 1], dtype=np.float64)
+             if log_transitions_seq is not None else A_global)
         nxt = np.full((S, P), NEG)
         # (a) stay in the same state, advancing the phase (capped at k-1).
         for s in range(S):
@@ -525,6 +688,7 @@ def segment_windows(
     hop_s: Optional[float] = None,
     max_join_gap_s: float = 0.0,
     classes: Sequence[str] = TARGET_CLASSES,
+    temperature: float = 1.0,
 ) -> list[Segment]:
     """Decode windows into segments: HMM/Viterbi + k-min duration + CUSUM snap.
 
@@ -535,6 +699,11 @@ def segment_windows(
     ``max_join_gap_s`` allows joining across a small unobserved gap; the default
     0.0 means any real gap in time splits the sequence, so no segment ever spans
     time the sensor did not record.
+
+    ``temperature`` — calibration scalar from :func:`fit_temperature`. Applied
+    to log-emission probabilities before Viterbi to prevent overconfident
+    classifier outputs from overriding the transition prior on minority classes.
+    1.0 = no calibration (default). Values > 1 soften the distribution.
 
     ``signals`` maps a minute timestamp to its :class:`PreprocessedSignal` and
     is what makes CUSUM refinement possible; without it boundaries stay on the
@@ -557,12 +726,31 @@ def segment_windows(
     k = max(1, int(round(min_duration_s / hop_s))) if hop_s > 0 else 1
 
     log_A = transition.log_matrix()
+    # Precompute generator matrix for time-aware transitions.
+    # hop_s is the typical step — used as the reference Δt for Q.
+    Q = generator_matrix(transition.matrix, dt=max(hop_s, 1.0))
     segments: list[Segment] = []
 
     for a, b in _runs_of_usable(ordered, max_join_gap_s=max_join_gap_s):
         run = ordered[a:b]
         emis = np.log(np.clip(np.vstack([w.probs for w in run]), 1e-300, None))
-        path = viterbi_k_min(emis, log_A, k=k)
+        emis = calibrate_emissions(emis, temperature)
+
+        # Build per-step log-transition matrices from actual Δt between windows.
+        # For a within-burst hop (Δt ≈ hop_s) the matrix is nearly A.
+        # For a cross-burst gap (Δt ≈ 40s+) it relaxes toward stationary.
+        log_A_seq: list[np.ndarray] = []
+        for i in range(len(run) - 1):
+            dt_i = _abs_start(run[i + 1]) - _abs_end(run[i])
+            dt_i = max(dt_i, hop_s if hop_s > 0 else 1.0)
+            A_dt = transition_for_dt(Q, dt_i)
+            with np.errstate(divide="ignore"):
+                log_A_seq.append(np.log(A_dt))
+
+        path = viterbi_k_min(
+            emis, log_A, k=k,
+            log_transitions_seq=log_A_seq if log_A_seq else None,
+        )
         segments.extend(
             _emit_segments(
                 run, path, classes, transition, signals, cusum_radius_s, hop_s

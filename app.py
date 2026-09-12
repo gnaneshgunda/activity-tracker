@@ -540,14 +540,53 @@ def _query_task1(rows, question: str) -> dict:
             f"confidence: {latest.confidence:.0%})."
         ),
         "label": latest.label,
+        "t_start": latest.t_start,
+        "t_end": latest.t_end,
     }
 
 
 def _query_task2(rows, question: str) -> dict:
     """Task 2: Aggregation. Compute duration/count for activities."""
     from collections import Counter
+    import re
 
     q_lower = question.lower()
+
+    # Generalized data-coverage detection: trigger on semantic combinations like
+    # "how much data...", "how many days...", "what is the sensor coverage...".
+    is_data_coverage_query = (
+        re.search(r"\b(how (many|much)|what is the)\b", q_lower) is not None
+        and re.search(r"\b(data|recording|recordings|sensor|coverage|dataset)\b", q_lower) is not None
+        and (
+            re.search(r"\b(day|days|hour|hours|week|weeks|month|months|minute|minutes|time)\b", q_lower) is not None
+            or "how much data" in q_lower
+            or "how many data" in q_lower
+        )
+    )
+
+    if is_data_coverage_query:
+        dates = sorted({
+            datetime.datetime.utcfromtimestamp(getattr(r, "t_start", 0)).date()
+            for r in rows
+            if getattr(r, "t_start", None) is not None
+        })
+        if not dates:
+            return {"answer": "No recorded data dates are available.", "confidence": 0.0, "explanation": "No valid timestamps were found in the database.", "label": ""}
+
+        day_count = len(dates)
+        start_date = dates[0].isoformat()
+        end_date = dates[-1].isoformat()
+        day_label = "day" if day_count == 1 else "days"
+        return {
+            "answer": f"You have {day_count} {day_label} of recorded data ({start_date} to {end_date}).",
+            "confidence": 0.9,
+            "explanation": (
+                f"Computed from {len(rows)} segments spanning {day_count} unique calendar day(s) "
+                f"from {start_date} to {end_date}."
+            ),
+            "label": "",
+        }
+
     activity_keywords = {
         "walk": "walking", "run": "running", "bike": "bicycling",
         "cycl": "bicycling", "sit": "sitting", "stand": "standing in place",
@@ -566,6 +605,8 @@ def _query_task2(rows, question: str) -> dict:
         total_min = total_s / 60.0
         bout_count = len(matching)
         mean_conf = sum(r.confidence for r in matching) / max(len(matching), 1)
+        t_start = min((r.t_start for r in matching), default=None)
+        t_end = max((r.t_end for r in matching), default=None)
 
         return {
             "answer": f"The user spent approximately {total_min:.1f} minutes {target_activity} ({bout_count} bout{'s' if bout_count != 1 else ''}).",
@@ -576,6 +617,8 @@ def _query_task2(rows, question: str) -> dict:
                 f"Mean segment confidence: {mean_conf:.0%}."
             ),
             "label": target_activity,
+            "t_start": t_start,
+            "t_end": t_end,
         }
 
     # No specific activity found — summarise all.
@@ -587,6 +630,9 @@ def _query_task2(rows, question: str) -> dict:
     for activity, dur_s in sorted(durations.items(), key=lambda x: -x[1]):
         summary_parts.append(f"{activity}: {dur_s/60:.1f} min")
 
+    t_start_all = min((r.t_start for r in rows), default=None)
+    t_end_all = max((r.t_end for r in rows), default=None)
+
     return {
         "answer": "Activity summary: " + ", ".join(summary_parts),
         "confidence": sum(r.confidence for r in rows) / max(len(rows), 1),
@@ -595,6 +641,8 @@ def _query_task2(rows, question: str) -> dict:
             + "; ".join(summary_parts)
         ),
         "label": "",
+        "t_start": t_start_all,
+        "t_end": t_end_all,
     }
 
 
@@ -734,26 +782,93 @@ def _query_energy(rows, question: str) -> dict:
 
 
 def _query_generic(rows, question: str) -> dict:
-    """Generic fallback for unroutable questions."""
+    """TASK4: Explanatory/open-world query — exemplar retrieval + SLM narration."""
     if not rows:
-        return {"answer": "No data available.", "confidence": 0.0, "explanation": "", "label": ""}
+        return {"answer": "No data available.", "confidence": 0.0,
+                "explanation": "", "label": ""}
 
     from collections import Counter
     durations = Counter()
     for r in rows:
         durations[r.label] += r.t_end - r.t_start
-    top = durations.most_common(1)[0]
+    top_label, top_dur = durations.most_common(1)[0]
+    # Use the most recent segment of the dominant activity as the query segment
+    matching = [r for r in rows if r.label == top_label]
+    seg = max(matching, key=lambda r: r.t_start)
 
-    return {
-        "answer": f"Most common activity: {top[0]} ({top[1]/60:.1f} min).",
-        "confidence": sum(r.confidence for r in rows) / max(len(rows), 1),
-        "explanation": (
-            f"Summary of {len(rows)} segments. "
-            f"Most common: {top[0]} ({top[1]/60:.1f} min). "
-            f"Total recording span: {max(r.t_end for r in rows) - min(r.t_start for r in rows):.0f} s."
-        ),
-        "label": top[0],
-    }
+    # Try full TASK4 path: signature extraction → exemplar retrieval → SLM
+    try:
+        from analysis.signature import Signature
+        from analysis.exemplars import nearest_exemplars, explain_auto
+
+        # Build a lightweight Signature proxy from the segment row
+        class _SigProxy:
+            def __init__(self, row):
+                self.segment_id = row.segment_id
+                self.t_start = row.t_start
+                self.t_end = row.t_end
+                self.label = row.label
+                # Fill physics features from what we have; rest default to NaN
+                self.tilt_deg_mean  = float("nan")
+                self.tilt_deg_std   = float("nan")
+                self.sma            = float("nan")
+                self.cadence_bpm    = float("nan")
+                self.gyro_rms_x     = float("nan")
+                self.gyro_rms_y     = float("nan")
+                self.gyro_rms_z     = float("nan")
+                self.jerk_energy    = float("nan")
+                self.orientation_stability = float("nan")
+
+        sig_proxy = _SigProxy(seg)
+        exemplars = nearest_exemplars(sig_proxy, k=3)
+        top_ex, top_dist = exemplars[0]
+
+        # Try SLM narration
+        try:
+            from models.slm import get_slm
+            slm = get_slm().for_narration()
+            from analysis.exemplars import build_explain_prompt
+            prompt = build_explain_prompt(sig_proxy, exemplars)
+            narration = slm(prompt)
+            explanation = (
+                f"[Exemplar: {top_ex.activity_class}, dist={top_dist:.3f}] "
+                f"{narration}"
+            )
+        except Exception:
+            # SLM not downloaded or unavailable — fall back to exemplar description
+            explanation = (
+                f"Closest known pattern: {top_ex.activity_class} "
+                f"(similarity distance {top_dist:.3f}). "
+                f"{top_ex.description} "
+                f"Query segment: {top_label} from {seg.t_start:.0f}s to {seg.t_end:.0f}s."
+            )
+
+        return {
+            "answer": (
+                f"The dominant activity is {top_label} ({top_dur/60:.1f} min). "
+                f"Closest exemplar: {top_ex.activity_class}."
+            ),
+            "confidence": seg.confidence,
+            "explanation": explanation,
+            "label": top_label,
+            "t_start": seg.t_start,
+            "t_end": seg.t_end,
+        }
+
+    except Exception as exc:
+        # Fallback: plain summary if exemplar path fails
+        return {
+            "answer": f"Most common activity: {top_label} ({top_dur/60:.1f} min).",
+            "confidence": sum(r.confidence for r in rows) / max(len(rows), 1),
+            "explanation": (
+                f"Summary of {len(rows)} segments. "
+                f"Most common: {top_label} ({top_dur/60:.1f} min). "
+                f"Total span: {max(r.t_end for r in rows) - min(r.t_start for r in rows):.0f}s."
+            ),
+            "label": top_label,
+            "t_start": seg.t_start,
+            "t_end": seg.t_end,
+        }
 
 
 def _render_ask_details(formatted):
@@ -1164,6 +1279,8 @@ def _tab_upload():
                 gyro_csv=gyro_path,
                 db_path=db_name,
                 user_id=user_id,
+                checkpoint_path="checkpoints/lstm_alpha_v4.pt",
+                loco_path="checkpoints/loco.npz",
                 progress_fn=progress_callback,
             )
             progress_bar.progress(1.0, text="Complete!")
