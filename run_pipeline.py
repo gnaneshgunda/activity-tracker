@@ -691,86 +691,187 @@ def run_pipeline_folder(
     from pipeline.recognize import softmax
     import torch
     from data.dataset import SEQ_CHANNELS, BURST_TIMESTEPS
+    import math as _math
+    from pipeline.recognize import (vertical_component, dominant_freq_hz,
+                                    acc_gyro_phase, cadence_from_vertical)
+    from data.physics_rules import periodicity_from_vertical, predict_proba
 
     th = Thresholds()
     transition = estimate_transitions([])
     all_windows: list = []
     signals: dict = {}
 
-    for file_idx, acc_path in enumerate(acc_files):
-        _progress(f"Burst {file_idx+1}/{n}", 0.05 + 0.70 * file_idx / n)
-        ts = int(acc_path.name.split(".")[0])
+    # ── Pass 1: preprocess every burst, collect physics scalars ──────
+    # This is needed to compute temporal context (rolling SMA/jerk over
+    # neighbouring bursts) that the model was trained on. Without it the
+    # context channels are zero → normalised to −0.6–0.8 → model collapses.
+    _progress("Preprocessing bursts", 0.05)
+    burst_order: list[int] = []          # timestamps in file order
+    burst_sigs:  dict[int, object] = {}  # ts → PreprocessedSignal
+    burst_sma:   dict[int, float] = {}   # ts → SMA scalar
+    burst_jerk:  dict[int, float] = {}   # ts → jerk_mean scalar
 
+    for file_idx, acc_path in enumerate(acc_files):
+        ts = int(acc_path.name.split(".")[0])
         try:
             acc_burst = load_burst_file(acc_path)
         except Exception:
             continue
-
-        gyro_burst = None
+        gyro_burst_pre = None
         if gyro_dir:
             gyro_path_f = gyro_dir / acc_path.name.replace("m_raw_acc", "m_proc_gyro")
             if gyro_path_f.is_file():
                 try:
-                    gyro_burst = load_burst_file(gyro_path_f)
+                    gyro_burst_pre = load_burst_file(gyro_path_f)
                 except Exception:
                     pass
-
         try:
             sig = preprocess_burst(
-                MinuteBurst(acc=acc_burst, gyro=gyro_burst),
+                MinuteBurst(acc=acc_burst, gyro=gyro_burst_pre),
                 uuid=user_id, timestamp=ts,
             )
         except Exception:
             continue
-
         if sig.n_samples < 25:
             continue
+        n_s = sig.n_samples
+        body_s = np.where(np.isfinite(sig.body_acc[:n_s]), sig.body_acc[:n_s], 0.0)
+        sma_s = float(np.nanmean(np.linalg.norm(body_s, axis=1)))
+        diff_s = np.diff(body_s, axis=0) * sig.fs
+        jerk_s = float(np.nanmean(np.linalg.norm(diff_s, axis=1))) if diff_s.shape[0] > 0 else 0.0
+        burst_order.append(ts)
+        burst_sigs[ts] = sig
+        burst_sma[ts]  = sma_s
+        burst_jerk[ts] = jerk_s
 
-        # Score windows for this burst
+    if not burst_order:
+        raise ValueError("No usable burst files found in directory.")
+
+    # ── Compute rolling context (±2 and ±5 neighbours) ───────────────
+    nb = len(burst_order)
+    sma_arr  = np.array([burst_sma[t]  for t in burst_order], dtype=np.float64)
+    jerk_arr = np.array([burst_jerk[t] for t in burst_order], dtype=np.float64)
+
+    def _roll(vals: np.ndarray, half: int):
+        means = np.empty(nb); stds = np.empty(nb)
+        for i in range(nb):
+            w = vals[max(0, i-half):min(nb, i+half+1)]
+            means[i] = float(np.mean(w))
+            stds[i]  = float(np.std(w)) if w.size > 1 else 0.0
+        return means, stds
+
+    sma_m2,  sma_s2  = _roll(sma_arr,  2)
+    jerk_m2, jerk_s2 = _roll(jerk_arr, 2)
+    sma_m5,  sma_s5  = _roll(sma_arr,  5)
+    jerk_m5, jerk_s5 = _roll(jerk_arr, 5)
+    ctx_by_ts = {
+        ts: np.array([sma_m2[i], sma_s2[i], jerk_m2[i], jerk_s2[i],
+                      sma_m5[i], sma_s5[i], jerk_m5[i], jerk_s5[i]], dtype=np.float32)
+        for i, ts in enumerate(burst_order)
+    }
+
+    # ── Pass 2: score each burst with correct context ─────────────────
+    for file_idx, acc_path in enumerate(acc_files):
+        _progress(f"Burst {file_idx+1}/{n}", 0.05 + 0.70 * file_idx / n)
+        ts = int(acc_path.name.split(".")[0])
+
+        # Use already-preprocessed signal from pass 1
+        sig = burst_sigs.get(ts)
+        if sig is None:
+            continue
+
+        # Score windows for this burst.
+        # IMPORTANT: this model was trained on full-burst sequences (400 timesteps),
+        # not on 2s window slices. We compute one LSTM forward pass per burst using
+        # the full signal, then assign that burst-level probability to every window.
+        # Physics features are also computed over the full burst, matching training.
         if lstm_model is not None and lstm_norm is not None:
-            def _scorer(window):
-                from data.dataset import _burst_sequence
-                i0 = max(0, int(round(window.t_start_s * sig.fs)))
-                i1 = min(sig.n_samples, int(round(window.t_end_s * sig.fs)) + 1)
-                n_s = i1 - i0
-                body = sig.body_acc[i0:i1]
-                grav = sig.gravity[i0:i1]
-                if sig.gyro_raw is not None:
-                    gy = sig.gyro_raw[i0:i1]
-                    ok = np.all(np.isfinite(gy), axis=1)
-                    pres = ok.astype(np.float64)[:, None]
-                    gy = np.where(ok[:, None], gy, 0.0)
+            import math as _math
+            from pipeline.recognize import (vertical_component,
+                dominant_freq_hz, acc_gyro_phase, cadence_from_vertical)
+            from data.physics_rules import periodicity_from_vertical, predict_proba
+
+            # ── Build full-burst block (matches _burst_sequence in dataset.py) ──
+            n_full = sig.n_samples
+            body_full = sig.body_acc[:n_full]
+            grav_full = sig.gravity[:n_full]
+            if sig.gyro_raw is not None:
+                gy_full = sig.gyro_raw[:n_full]
+                ok_full = np.all(np.isfinite(gy_full), axis=1)
+                pres_full = ok_full.astype(np.float64)[:, None]
+                gy_full = np.where(ok_full[:, None], gy_full, 0.0)
+            else:
+                gy_full = np.zeros((n_full, 3))
+                pres_full = np.zeros((n_full, 1))
+
+            valid_full = (np.all(np.isfinite(body_full), axis=1) &
+                          np.all(np.isfinite(grav_full), axis=1))
+            body_full = np.where(valid_full[:, None], body_full, 0.0)
+            grav_full = np.where(valid_full[:, None], grav_full, 0.0)
+
+            # Physics features over the full burst
+            vertical_full = vertical_component(body_full, grav_full)
+            sma_b = float(np.nanmean(np.linalg.norm(body_full, axis=1)))
+            g_mean_b = np.nanmean(grav_full, axis=0)
+            g_norm_b = float(np.linalg.norm(g_mean_b))
+            tilt_b = float(_math.degrees(_math.acos(
+                max(-1.0, min(1.0, float(np.dot(g_mean_b / g_norm_b, [0, 0, -1]))))
+            ))) if g_norm_b > 1e-9 else 90.0
+            fin_v_b = vertical_full[np.isfinite(vertical_full)]
+            vert_std_b = float(np.std(fin_v_b)) if fin_v_b.size > 1 else 0.0
+            cad_hz_b, _, _ = cadence_from_vertical(vertical_full, fs=sig.fs, sma=sma_b)
+            cad_hz_b = float(cad_hz_b) if _math.isfinite(cad_hz_b) else 0.0
+            per_b = float(periodicity_from_vertical(vertical_full, sig.fs))
+            diff_b = np.diff(body_full, axis=0) * sig.fs
+            jerk_mean_b = float(np.nanmean(np.linalg.norm(diff_b, axis=1))) if diff_b.shape[0] > 0 else 0.0
+            gx_b = float(np.sqrt(np.nanmean(np.square(gy_full[:, 0]))))
+            gy_b = float(np.sqrt(np.nanmean(np.square(gy_full[:, 1]))))
+            gz_b = float(np.sqrt(np.nanmean(np.square(gy_full[:, 2]))))
+            rot_ratio_b = _math.sqrt(gx_b**2 + gy_b**2 + gz_b**2) / (sma_b + 1e-6)
+            dom_hz_b = float(dominant_freq_hz(vertical_full, fs=sig.fs))
+            phase_b = 0.0
+            if sig.has_gyro:
+                rms_ax_b = np.array([gx_b, gy_b, gz_b])
+                dom_ax_b = int(np.argmax(rms_ax_b))
+                phase_b = float(acc_gyro_phase(vertical_full, gy_full[:, dom_ax_b], fs=sig.fs))
+            phys_vec_b = np.array([
+                tilt_b / 90.0, sma_b, cad_hz_b, per_b, vert_std_b, rot_ratio_b,
+                jerk_mean_b, gx_b, gy_b, gz_b, dom_hz_b, phase_b,
+                0.0, 0.0, 0.0, 0.0,  # placement unknown
+            ], dtype=np.float32)
+
+            # Build (BURST_TIMESTEPS, 35) block — same layout as _burst_sequence
+            T_b = min(n_full, BURST_TIMESTEPS)
+            raw_b = np.concatenate([body_full[:T_b], grav_full[:T_b],
+                                    gy_full[:T_b], pres_full[:T_b]], axis=1)
+            # Use precomputed rolling context for this burst (matches training)
+            ctx_vec = ctx_by_ts.get(ts, np.zeros(8, dtype=np.float32))
+            ctx_b = np.tile(ctx_vec[None], (T_b, 1)).astype(np.float32)
+            val_b = valid_full[:T_b].astype(np.float32)[:, None]
+            block_b = np.concatenate(
+                [raw_b, np.tile(phys_vec_b[None], (T_b, 1)), ctx_b, val_b], axis=1
+            ).astype(np.float32)
+            if T_b < BURST_TIMESTEPS:
+                block_b = np.vstack([block_b,
+                    np.zeros((BURST_TIMESTEPS - T_b, block_b.shape[1]), dtype=np.float32)])
+
+            x_b = lstm_norm.apply(block_b[None])
+            with torch.no_grad():
+                out_b = lstm_model(torch.from_numpy(x_b.astype(np.float32)))
+                if isinstance(out_b, tuple):
+                    logits_b, alpha_b = out_b
+                    logits_arr_b = logits_b.cpu().numpy().ravel()
+                    a_b = float(np.clip(alpha_b.cpu().numpy().mean(), 0.0, 1.0))
                 else:
-                    gy = np.zeros((n_s, 3))
-                    pres = np.zeros((n_s, 1))
+                    logits_arr_b = out_b.cpu().numpy().ravel()
+                    a_b = 0.5
+            p_ml_b = softmax(logits_arr_b)
 
-                from data.physics_rules import predict_proba
-                phys_vec = np.zeros(16)
-                phys = predict_proba(_window_to_features(window), th, loco_clf=loco_clf)
-
-                T = min(n_s, BURST_TIMESTEPS)
-                raw_block = np.concatenate([body[:T], grav[:T], gy[:T], pres[:T]], axis=1)
-                ctx_zeros = np.zeros((T, 8), dtype=np.float64)
-                val_col = pres[:T]
-                block = np.concatenate(
-                    [raw_block, np.tile(phys_vec[None], (T, 1)), ctx_zeros, val_col], axis=1
-                ).astype(np.float32)
-                if T < BURST_TIMESTEPS:
-                    block = np.vstack([block, np.zeros((BURST_TIMESTEPS - T, block.shape[1]), dtype=np.float32)])
-
-                x = lstm_norm.apply(block[None])
-                with torch.no_grad():
-                    out = lstm_model(torch.from_numpy(x.astype(np.float32)))
-                    if isinstance(out, tuple):
-                        logits_t, alpha_t = out
-                        logits_arr = logits_t.cpu().numpy().ravel()
-                        a = float(np.clip(alpha_t.cpu().numpy().mean(), 0.0, 1.0))
-                    else:
-                        logits_arr = out.cpu().numpy().ravel()
-                        a = 0.5
-                p_ml = softmax(logits_arr)
-                combined = combine_probs(p_ml, phys, a)
+            # One scorer per burst: blends burst-level LSTM with per-window physics
+            def _scorer(window, _p_ml=p_ml_b, _a=a_b):
                 feats = _window_to_features(window)
+                phys_w = predict_proba(feats, th, loco_clf=loco_clf)
+                combined = combine_probs(_p_ml, phys_w, _a)
                 combined = physics_override(combined, feats, th, tuple(window.classes))
                 return np.log(np.clip(combined, 1e-12, None))
         else:
