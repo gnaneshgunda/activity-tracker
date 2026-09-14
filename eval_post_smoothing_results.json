@@ -1,0 +1,123 @@
+{
+  "accuracy": 0.3107852412488174,
+  "macro_f1": 0.1185492601948755,
+  "per_class": {
+    "lying down": {
+      "precision": 0.3107852412488174,
+      "recall": 1.0,
+      "f1": 0.474197040779502,
+      "support": 657
+    },
+    "sitting": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 1104
+    },
+    "standing in place": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 192
+    },
+    "standing and moving": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 0
+    },
+    "walking": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 161
+    },
+    "running": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 0
+    },
+    "bicycling": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "support": 0
+    }
+  },
+  "confusion": [
+    [
+      657,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      1104,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      192,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      161,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ]
+  ],
+  "classes": [
+    "lying down",
+    "sitting",
+    "standing in place",
+    "standing and moving",
+    "walking",
+    "running",
+    "bicycling"
+  ],
+  "n_samples": 2114
+}

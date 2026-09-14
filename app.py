@@ -319,27 +319,42 @@ def _query_all(store, limit: int):
     return [_row_to_timeline(r) for r in cur.fetchall()]
 
 
-def _render_timeline_row(store, row):
-    """Render one segment as an expandable row with a coverage badge."""
-    # Compute full-segment coverage via get_coverage.
-    try:
-        span = max(row.t_end - row.t_start, _SEG_PROBE_EPSILON)
-        cov_fraction = store.get_coverage(row.segment_id, row.t_start, row.t_end)
-    except Exception:
-        cov_fraction = row.coverage_s / max(row.t_end - row.t_start, 1.0)
-        cov_fraction = min(max(cov_fraction, 0.0), 1.0)
+def _timeline_reference_and_label(row, recording_start_t: Optional[float]):
+    """Return the effective reference value and a user-facing time label."""
+    t_start = getattr(row, "t_start", None)
+    if t_start is None:
+        return None, "timestamp unavailable"
 
-    badge = _coverage_badge(cov_fraction)
-    dt = datetime.datetime.utcfromtimestamp(row.t_start)
+    ref = recording_start_t if recording_start_t is not None else t_start
+    dt = datetime.datetime.utcfromtimestamp(float(t_start))
+
     # ExtraSensory timestamps are device-relative (seconds from boot), not
     # wall-clock — they map to 1970. Show as relative offset in that case.
     if dt.year < 2000:
-        ref = st.session_state.get("recording_start_t", row.t_start)
-        offset = row.t_start - ref
-        ts_str = f"+{offset:.0f}s from start"
-    else:
-        ts_str = dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-    dur_s = row.t_end - row.t_start
+        offset = float(t_start) - float(ref)
+        return ref, f"+{offset:.0f}s from start"
+    return ref, dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _render_timeline_row(store, row):
+    """Render one segment as an expandable row with a coverage badge."""
+    t_start = getattr(row, "t_start", None)
+    t_end = getattr(row, "t_end", None)
+    if t_start is None or t_end is None:
+        st.caption("Timestamp unavailable for this segment; skipping detailed timeline rendering.")
+        return
+
+    # Compute full-segment coverage via get_coverage.
+    try:
+        span = max(float(t_end) - float(t_start), _SEG_PROBE_EPSILON)
+        cov_fraction = store.get_coverage(row.segment_id, float(t_start), float(t_end))
+    except Exception:
+        cov_fraction = row.coverage_s / max(float(t_end) - float(t_start), 1.0)
+        cov_fraction = min(max(cov_fraction, 0.0), 1.0)
+
+    badge = _coverage_badge(cov_fraction)
+    ref, ts_str = _timeline_reference_and_label(row, st.session_state.get("recording_start_t"))
+    dur_s = float(t_end) - float(t_start)
 
     label = (row.label or "unknown").title()
     conf_pct = f"{row.confidence * 100:.0f}%" if row.confidence is not None else "?"
@@ -1332,80 +1347,76 @@ def _tab_upload():
                 gyro_path = os.path.join(tmpdir, "gyro.csv")
                 with open(gyro_path, "wb") as f:
                     f.write(gyro_file.getvalue())
-            if gyro_file is not None:
-                gyro_path = os.path.join(tmpdir, "gyro.csv")
-                with open(gyro_path, "wb") as f:
-                    f.write(gyro_file.getvalue())
 
-    elif upload_mode == "Multiple days (ExtraSensory .dat)":
-        # Handle .dat or .zip uploads
-        dat_paths = []
-        if dat_file:
-            import zipfile
-            import io
-            # Zip file with multiple dat files
-            if any(f.name.endswith('.zip') for f in dat_file):
-                zip_bytes = dat_file[0].read()
-                with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zf:
-                    for name in zf.namelist():
-                        if name.endswith('.dat'):
-                            zf.extract(name, tmpdir)
-                            dat_paths.append(os.path.join(tmpdir, name))
-            # Multiple .dat files
-            else:
-                for f in dat_file:
-                    path = os.path.join(tmpdir, f.name)
-                    with open(path, 'wb') as out:
-                        out.write(f.getvalue())
-                    dat_paths.append(path)
+        elif upload_mode == "Multiple days (ExtraSensory .dat)":
+            # Handle .dat or .zip uploads
+            dat_paths = []
+            if dat_file:
+                import zipfile
+                import io
+                # Zip file with multiple dat files
+                if any(f.name.endswith('.zip') for f in dat_file):
+                    zip_bytes = dat_file[0].read()
+                    with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zf:
+                        for name in zf.namelist():
+                            if name.endswith('.dat'):
+                                zf.extract(name, tmpdir)
+                                dat_paths.append(os.path.join(tmpdir, name))
+                # Multiple .dat files
+                else:
+                    for f in dat_file:
+                        path = os.path.join(tmpdir, f.name)
+                        with open(path, 'wb') as out:
+                            out.write(f.getvalue())
+                        dat_paths.append(path)
 
-        # Detect acc vs gyro files
-        acc_path = None
-        gyro_path = None
-        for p in dat_paths:
-            if p.endswith('.m_raw_acc.dat'):
-                acc_path = p
-            elif p.endswith('.m_proc_gyro.dat'):
-                gyro_path = p
+            # Detect acc vs gyro files
+            acc_path = None
+            gyro_path = None
+            for p in dat_paths:
+                if p.endswith('.m_raw_acc.dat'):
+                    acc_path = p
+                elif p.endswith('.m_proc_gyro.dat'):
+                    gyro_path = p
 
-        if acc_path is None:
-            st.error("No accelerometer data found. Expected .m_raw_acc.dat file(s).")
-            return
+            if acc_path is None:
+                st.error("No accelerometer data found. Expected .m_raw_acc.dat file(s).")
+                return
 
-    # Run pipeline with progress bar.
-    progress_bar = st.progress(0, text="Starting pipeline...")
-    status_text = st.empty()
+        # Run pipeline with progress bar.
+        progress_bar = st.progress(0, text="Starting pipeline...")
+        status_text = st.empty()
 
-    def progress_callback(step: str, frac: float):
-        progress_bar.progress(min(frac, 1.0), text=step)
-        status_text.text(f"{step} ({frac*100:.0f}%)")
+        def progress_callback(step: str, frac: float):
+            progress_bar.progress(min(frac, 1.0), text=step)
+            status_text.text(f"{step} ({frac*100:.0f}%)")
 
-    try:
-        db_path = run_pipeline_fn(
-            acc_csv=acc_path,
-            gyro_csv=gyro_path,
-            db_path=db_name,
-            user_id=user_id,
-            checkpoint_path="checkpoints/lstm_alpha_v4.pt",
-            loco_path="checkpoints/loco.npz",
-            progress_fn=progress_callback,
-        )
-        progress_bar.progress(1.0, text="Complete!")
-        st.success(f"✅ Pipeline complete! Results saved to `{db_path}`.")
-
-        # Auto-connect to the new DB.
         try:
-            _open_store(str(db_path))
-            st.info("🔗 Auto-connected to the new database. Switch to the Timeline or Ask tab to explore.")
-        except Exception as exc:
-            st.warning(f"Could not auto-connect: {exc}. Use the sidebar to connect manually.")
+            db_path = run_pipeline_fn(
+                acc_csv=acc_path,
+                gyro_csv=gyro_path,
+                db_path=db_name,
+                user_id=user_id,
+                checkpoint_path="checkpoints/lstm_alpha_v4.pt",
+                loco_path="checkpoints/loco.npz",
+                progress_fn=progress_callback,
+            )
+            progress_bar.progress(1.0, text="Complete!")
+            st.success(f"✅ Pipeline complete! Results saved to `{db_path}`.")
 
-    except Exception as exc:
-        progress_bar.progress(0.0, text="Failed")
-        st.error(f"❌ Pipeline failed: {exc}")
-        import traceback
-        with st.expander("Error details"):
-            st.code(traceback.format_exc())
+            # Auto-connect to the new DB.
+            try:
+                _open_store(str(db_path))
+                st.info("🔗 Auto-connected to the new database. Switch to the Timeline or Ask tab to explore.")
+            except Exception as exc:
+                st.warning(f"Could not auto-connect: {exc}. Use the sidebar to connect manually.")
+
+        except Exception as exc:
+            progress_bar.progress(0.0, text="Failed")
+            st.error(f"❌ Pipeline failed: {exc}")
+            import traceback
+            with st.expander("Error details"):
+                st.code(traceback.format_exc())
 
 
 # ---------------------------------------------------------------------------

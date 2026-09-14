@@ -64,8 +64,8 @@ Verified: Train∩Test=0, Val∩Test=0, Train∩Val=0.
 **Input channels: 10 → 35**
 Raw sensor (10) + derived physics features (12: tilt, SMA, cadence, periodicity, vert_std, rotation_ratio, jerk_mean, gyro_xyz_rms, dominant_freq, acc_gyro_phase) + placement flags (4) + rolling temporal context (8: mean/std of SMA and jerk over ±2 and ±5 burst neighbours) + sample_valid (1).
 
-**Data pipeline: windows → burst sequences**
-`build_burst_sequences` replaces `build_windows` — one (400, 35) sequence per labeled minute instead of 18 overlapping 2s windows. Data loading: 30 min → 2 min. LSTM sees the full 16s burst context.
+**Data pipeline: 2s sliding windows**
+At inference the signal is sliced into 2s windows (50 timesteps at 25 Hz) with 50% overlap using `build_windows`. Each window produces a 7-class probability distribution; these are fed into the HMM+Viterbi segmentation layer. During training, `build_burst_sequences` creates one (400, 35) sequence per labeled minute for efficient data loading (30 min → 2 min), but the deployed model scores 2s windows at runtime.
 
 **Complementary filter gravity** (`data/preprocess.py`, `data/fusion.py`)
 Gyro-accelerometer fusion reduces tilt estimation drift from 2–13° to under 1° during active motion.
